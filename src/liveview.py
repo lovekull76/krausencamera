@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Livevy över HTTP för krausenkameran.
+"""HTTP live view for the krausen camera.
 
-Öppna http://krausencamera:8080/ i valfri webbläsare. IR-lampan tänds när
-första tittaren ansluter och släcks när den sista försvinner.
+Open http://krausencamera:8080/ in any browser. The IR illumination switches
+on when the first viewer connects and off when the last one disappears.
 
-Kameran konfigureras en gång och konfigureras aldrig om -- lägesbyten kräver
-omkonfigurering av sensorn och är det enda som faktiskt är långsamt. Samma
-videokonfiguration bär två strömmar ur samma sensorläge:
+The camera is configured once and never reconfigured -- switching modes forces
+a sensor reconfiguration and is the only genuinely slow operation. A single
+video configuration carries two streams out of the same sensor mode:
 
-    main   2304x1296  -- mätningens bildrutor (2x2-binnat, 4x signal/pixel)
-    lores   768x432   -- webbvyn, bråkdelen av kodningsarbetet
+    main   2304x1296  -- measurement frames (2x2 binned, 4x signal per pixel)
+    lores   768x432   -- the web view, a fraction of the encoding work
 
-Exponering, vitbalans och fokus är låsta. Det är inte kosmetika: automatiken
-kompenserar annars bort exakt den ljusstyrkeförändring som ska mätas när
-krausen bygger, och tidsserien blir värdelös för automatisk analys.
-Kör med --auto vid inriktning av huset, aldrig vid mätning.
+Exposure, white balance and focus are locked. This is not cosmetic: the
+automatics would otherwise compensate away exactly the brightness change that
+is to be measured as the krausen builds, leaving the time series useless for
+automated analysis. Use --auto when aiming the housing, never when measuring.
 """
 
 from __future__ import annotations
@@ -35,11 +35,11 @@ MAIN_SIZE = (2304, 1296)
 LORES_SIZE = (768, 432)
 
 PAGE = """<!DOCTYPE html>
-<html lang="sv">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Krausenkamera</title>
+<title>Krausen camera</title>
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; background: #111; color: #ddd;
@@ -50,15 +50,15 @@ PAGE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-  <img src="/stream.mjpg" alt="Livebild från krausenkameran">
-  <div class="meta">{w}&times;{h} &middot; IR-belysning tänd medan denna sida är öppen</div>
+  <img src="/stream.mjpg" alt="Live view from the krausen camera">
+  <div class="meta">{w}&times;{h} &middot; IR illumination is on while this page is open</div>
 </body>
 </html>
 """
 
 
 class FrameBroker(io.BufferedIOBase):
-    """Tar emot JPEG-rutor från encodern och delar ut senaste till alla läsare."""
+    """Receives JPEG frames from the encoder and hands the latest to readers."""
 
     def __init__(self) -> None:
         self.frame: bytes | None = None
@@ -80,7 +80,7 @@ class FrameBroker(io.BufferedIOBase):
 class Handler(server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    # sätts av main()
+    # injected by main()
     broker: FrameBroker
     lamp: Lamp
 
@@ -105,8 +105,9 @@ class Handler(server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_page(self) -> None:
-        # str.replace, inte %-formatering eller .format(): CSS innehåller både
-        # "100%" och klammerparenteser, som båda kolliderar med de mallspråken.
+        # str.replace rather than %-formatting or .format(): the CSS contains
+        # both "100%" and curly braces, each of which collides with one of
+        # those template languages.
         body = (PAGE.replace("{w}", str(LORES_SIZE[0]))
                     .replace("{h}", str(LORES_SIZE[1]))).encode()
         self._send_bytes(body, "text/html; charset=utf-8")
@@ -118,16 +119,17 @@ class Handler(server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=FRAME")
         self.end_headers()
 
-        # Tittaren håller lampan tänd så länge strömmen lever. release() i
-        # finally är det som hindrar en kraschad flik från att lämna den på.
+        # The viewer holds the lamp on for as long as the stream lives.
+        # release() in the finally is what stops a crashed tab from leaving
+        # it lit indefinitely.
         self.lamp.acquire()
         peer = self.address_string()
-        log.info("tittare ansluten: %s", peer)
+        log.info("viewer connected: %s", peer)
         try:
             while True:
                 frame = self.broker.next_frame()
                 if frame is None:
-                    log.warning("ingen bildruta på 5 s -- stänger ström till %s", peer)
+                    log.warning("no frame for 5 s -- closing stream to %s", peer)
                     break
                 self.wfile.write(b"--FRAME\r\n")
                 self.send_header("Content-Type", "image/jpeg")
@@ -139,7 +141,7 @@ class Handler(server.BaseHTTPRequestHandler):
             pass
         finally:
             self.lamp.release()
-            log.info("tittare borta: %s", peer)
+            log.info("viewer gone: %s", peer)
 
 
 class Server(socketserver.ThreadingMixIn, server.HTTPServer):
@@ -161,7 +163,7 @@ def build_camera(args):
 
     controls = {"AfMode": 0, "LensPosition": args.lens_position}
     if args.auto:
-        log.warning("--auto: exponering och vitbalans OLÅSTA. Endast för inriktning.")
+        log.warning("--auto: exposure and white balance UNLOCKED. Aiming only.")
     else:
         controls.update(
             AeEnable=False,
@@ -184,16 +186,17 @@ def main() -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--lens-position", type=float, default=7.1,
-                   help="dioptrier (1/avstånd i meter); 7.1 ~ 140 mm. Kalibreras med fokussvep.")
+                   help="dioptres (1/distance in metres); 7.1 ~ 140 mm. "
+                        "Calibrate with a focus sweep.")
     p.add_argument("--exposure-us", type=int, default=60000,
-                   help="exponeringstid i mikrosekunder; inget rör sig, så tid är gratis")
+                   help="exposure time in microseconds; nothing moves, so time is free")
     p.add_argument("--gain", type=float, default=1.0)
     p.add_argument("--red-gain", type=float, default=1.5)
     p.add_argument("--blue-gain", type=float, default=1.5)
     p.add_argument("--bitrate", type=int, default=4_000_000)
-    p.add_argument("--led-pin", type=int, default=17, help="GPIO för IR-belysningen")
+    p.add_argument("--led-pin", type=int, default=17, help="GPIO pin for the IR illumination")
     p.add_argument("--auto", action="store_true",
-                   help="lås upp exponering/vitbalans -- endast för inriktning")
+                   help="unlock exposure/white balance -- for aiming only")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
 
@@ -202,18 +205,18 @@ def main() -> int:
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
 
-    lamp = Lamp("IR-belysning", args.led_pin)
+    lamp = Lamp("IR illumination", args.led_pin)
     picam2, broker = build_camera(args)
     Handler.broker = broker
     Handler.lamp = lamp
 
     httpd = Server(("", args.port), Handler)
-    log.info("livevy på http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",
+    log.info("live view on http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",
              args.port, *MAIN_SIZE, *LORES_SIZE)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        log.info("avslutar")
+        log.info("shutting down")
     finally:
         httpd.shutdown()
         picam2.stop_recording()

@@ -9,7 +9,7 @@ __pycache__/
 .venv/
 venv/
 
-# Bilder & video från kameran — ska aldrig i repot
+# Stills and video from the camera — never in the repository
 captures/
 timelapse/
 *.jpg
@@ -18,9 +18,9 @@ timelapse/
 *.mp4
 *.h264
 
-# Lokalt
+# Local
 *.log
 .env
 
-# Platsspecifikt — IP, MAC, nycklar. Publikt repo.
+# Site-specific — IP, MAC, keys. The repository is public.
 LOCAL.md

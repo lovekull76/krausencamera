@@ -1,17 +1,24 @@
-"""Referensräknad styrning av IR-belysning och laser.
+"""Reference-counted control of the IR illumination and the laser.
 
-Två konsumenter delar IR-lampan: mätcykeln och livevyn. Det ställer tre krav
-som är billiga att bygga in nu och besvärliga att lägga till efteråt:
+Two consumers share the IR lamp: the measurement cycle and the live view.
+That imposes three requirements which are cheap to build in now and awkward
+to retrofit:
 
-1. Mätcykelns bildruta B tas i mörker med bara lasern tänd. En ansluten
-   tittare får inte hålla lampan tänd då -- därav `forced_off()`.
-2. En webbläsarflik som dör utan att stänga snyggt får inte lämna lampan
-   tänd för alltid -- därav referensräkning med `release()` i finally.
-3. LED:ens ljusutbyte sjunker när kapseln blir varm. Bildruta A måste därför
-   tas efter en *fast* tändtid från känt läge, annars läcker den termiska
-   driften in i just den ljusstyrkemätning som ska säga något om krausen.
-   `settled()` sköter det, och `was_lit_for` loggas med varje mätning så
-   analysen kan flagga rutor tagna med varm lampa.
+1. **Two consumers.** The measurement cycle needs the lamp both lit (frame A)
+   and dark (frame B, where the laser dot must be the only bright thing in an
+   almost black image). A connected viewer holding the lamp on would ruin
+   frame B -- hence `forced_off()`.
+2. **Reference counting with a release guarantee.** A browser tab that dies
+   without closing cleanly must not leave the lamp lit forever -- hence
+   `release()` in a `finally`.
+3. **Thermal drift.** LED output falls as the package heats up. A viewer
+   watching for ten minutes leaves the lamp hot, so the next frame A comes out
+   dimmer than one taken from cold -- and that is exactly the brightness change
+   the measurement is supposed to attribute to the krausen. Locking the camera
+   exposure does not help, because the error is in the light source, not the
+   sensor. `settled()` enforces a fixed warm-up from a known state, and
+   `was_lit_for` is logged with each measurement so the analysis can flag
+   frames taken with a hot lamp.
 """
 
 from __future__ import annotations
@@ -25,7 +32,11 @@ log = logging.getLogger(__name__)
 
 
 class _NullPin:
-    """Fallback tills GPIO är inkopplat -- loggar i stället för att lysa."""
+    """Stand-in until the GPIO hardware is wired up.
+
+    Deliberately silent: `Lamp` logs every transition itself, so that the log
+    reads the same whether or not real hardware is present.
+    """
 
     def __init__(self, name: str, pin: int) -> None:
         self._name = name
@@ -40,27 +51,27 @@ class _NullPin:
 
 
 def _make_pin(name: str, pin: int):
-    """Riktig GPIO om den går att ta, annars en stub.
+    """Real GPIO if it can be claimed, otherwise a stub.
 
-    Både importen och själva anspråket kan fallera -- gpiozero kastar t.ex.
-    lgpio.error('GPIO busy') om en annan process redan håller stiftet, och
-    BadPinFactory när inget backend finns. Ingen av dem är ImportError, och
-    ingen av dem ska hindra servern från att starta utan hårdvara.
+    Both the import and the claim itself can fail: gpiozero raises
+    lgpio.error('GPIO busy') when another process already holds the pin, and
+    BadPinFactory when no backend is available. Neither is an ImportError, and
+    neither should stop the server from starting without hardware attached.
     """
     try:
         from gpiozero import DigitalOutputDevice
     except ImportError:
-        log.warning("gpiozero saknas -- %s körs som STUB, ingen GPIO", name)
+        log.warning("gpiozero not available -- %s running as STUB, no GPIO", name)
         return _NullPin(name, pin)
     try:
         return DigitalOutputDevice(pin, active_high=True, initial_value=False)
     except Exception as exc:
-        log.warning("GPIO%d gick inte att ta (%s) -- %s körs som STUB", pin, exc, name)
+        log.warning("could not claim GPIO%d (%s) -- %s running as STUB", pin, exc, name)
         return _NullPin(name, pin)
 
 
 class Lamp:
-    """En MOSFET-driven last med referensräkning och känd tändhistorik."""
+    """A MOSFET-driven load with reference counting and known lit history."""
 
     def __init__(self, name: str, pin: int, settle_s: float = 0.25) -> None:
         self.name = name
@@ -73,7 +84,7 @@ class Lamp:
         self._lit_since: float | None = None
         self._last_lit_duration = 0.0
 
-    # -- tillstånd ---------------------------------------------------------
+    # -- state -------------------------------------------------------------
 
     @property
     def is_lit(self) -> bool:
@@ -81,33 +92,33 @@ class Lamp:
 
     @property
     def was_lit_for(self) -> float:
-        """Sekunder lampan varit tänd, eller hur länge den var tänd senast.
+        """Seconds the lamp has been lit, or how long it was lit last time.
 
-        Loggas med varje mätning: ett högt värde betyder varm kapsel och
-        därmed lägre ljusutbyte i bildruta A.
+        Logged with every measurement: a high value means a warm package and
+        therefore reduced light output in frame A.
         """
         with self._lock:
             if self._lit_since is not None:
                 return time.monotonic() - self._lit_since
             return self._last_lit_duration
 
-    # -- intern växling ----------------------------------------------------
+    # -- internal switching ------------------------------------------------
 
     def _apply(self) -> None:
-        """Lampan lyser om någon håller den och ingen tvingat ner den."""
+        """Lit if somebody holds it and nobody has forced it off."""
         want = self._holders > 0 and self._forced_off == 0
         if want and self._lit_since is None:
             self._pin.on()
             self._lit_since = time.monotonic()
-            log.info("%s TÄND%s (hållare=%d)", self.name, self._stub_tag, self._holders)
+            log.info("%s ON%s (holders=%d)", self.name, self._stub_tag, self._holders)
         elif not want and self._lit_since is not None:
             self._pin.off()
             self._last_lit_duration = time.monotonic() - self._lit_since
             self._lit_since = None
-            log.info("%s SLÄCKT%s (var tänd %.1f s)",
+            log.info("%s OFF%s (was lit for %.1f s)",
                      self.name, self._stub_tag, self._last_lit_duration)
 
-    # -- publikt API -------------------------------------------------------
+    # -- public API --------------------------------------------------------
 
     def acquire(self) -> None:
         with self._lock:
@@ -117,7 +128,7 @@ class Lamp:
     def release(self) -> None:
         with self._lock:
             if self._holders == 0:
-                log.warning("%s: release() utan matchande acquire()", self.name)
+                log.warning("%s: release() without matching acquire()", self.name)
                 return
             self._holders -= 1
             self._apply()
@@ -132,7 +143,7 @@ class Lamp:
 
     @contextmanager
     def forced_off(self):
-        """Tvinga ner lampan oavsett tittare -- för bildruta B."""
+        """Force the lamp off regardless of viewers -- for frame B."""
         with self._lock:
             self._forced_off += 1
             self._apply()
@@ -145,10 +156,10 @@ class Lamp:
 
     @contextmanager
     def settled(self):
-        """Tänd och vänta ut en *fast* tändtid innan exponering.
+        """Light up and wait out a *fixed* warm-up before exposing.
 
-        Ger bildruta A samma termiska utgångsläge varje gång, oberoende av
-        om en tittare nyss haft lampan tänd.
+        Gives frame A the same thermal starting point every time, regardless
+        of whether a viewer has just been holding the lamp on.
         """
         with self.held():
             time.sleep(self.settle_s)
