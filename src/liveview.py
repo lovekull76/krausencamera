@@ -25,7 +25,9 @@ import logging
 import socketserver
 import sys
 import threading
+import time
 from http import server
+from urllib.parse import parse_qs, urlparse
 
 from illumination import Lamp
 
@@ -33,6 +35,14 @@ log = logging.getLogger("liveview")
 
 MAIN_SIZE = (2304, 1296)
 LORES_SIZE = (768, 432)
+
+# The sensor delivers 30 fps. Watching whether anything is happening at all
+# needs a small fraction of that; watching hops being drawn under by the
+# agitator during a dry hop needs the lot. So the rate is chosen per viewer
+# rather than fixed, and the frames not sent are simply dropped -- the encoder
+# runs at sensor rate regardless.
+FPS_PRESETS = [(2, "Check"), (10, "Watch"), (30, "Agitation")]
+FPS_MAX = 30
 
 PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -46,12 +56,34 @@ PAGE = """<!DOCTYPE html>
          font: 14px system-ui, sans-serif; display: flex;
          flex-direction: column; align-items: center; gap: .75rem; padding: 1rem; }
   img { max-width: 100%; height: auto; border-radius: 4px; background: #000; }
-  .meta { opacity: .6; font-variant-numeric: tabular-nums; }
+  .rates { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+  button { font: inherit; padding: .5rem .9rem; border-radius: 999px; cursor: pointer;
+           border: 1px solid #444; background: #1c1c1c; color: #ccc; }
+  button.on { background: #ddd; color: #111; border-color: #ddd; }
+  .meta { opacity: .6; font-variant-numeric: tabular-nums; text-align: center; }
 </style>
 </head>
 <body>
-  <img src="/stream.mjpg" alt="Live view from the krausen camera">
-  <div class="meta">{w}&times;{h} &middot; IR illumination is on while this page is open</div>
+  <img src="" alt="Live view from the krausen camera">
+  <div class="rates">{buttons}</div>
+  <div class="meta"></div>
+<script>
+  const img = document.querySelector("img");
+  const meta = document.querySelector(".meta");
+  const buttons = [...document.querySelectorAll("button")];
+  function setFps(n) {
+    img.src = "/stream.mjpg?fps=" + n;
+    buttons.forEach(b => b.classList.toggle("on", +b.dataset.fps === n));
+    meta.textContent = "{w}\u00d7{h} \u00b7 " + n + " fps \u00b7 "
+      + "~" + Math.round(n * 15) + " kB/s \u00b7 "
+      + "IR illumination is on while this page is open";
+    try { localStorage.setItem("fps", n); } catch (e) {}
+  }
+  buttons.forEach(b => b.onclick = () => setFps(+b.dataset.fps));
+  let start = {default_fps};
+  try { start = +localStorage.getItem("fps") || start; } catch (e) {}
+  setFps(start);
+</script>
 </body>
 </html>
 """
@@ -84,16 +116,18 @@ class Handler(server.BaseHTTPRequestHandler):
     broker: FrameBroker
     lamp: Lamp
     stream_timeout: float
+    default_fps: float
 
     def log_message(self, fmt: str, *args) -> None:
         log.debug("%s %s", self.address_string(), fmt % args)
 
     def do_GET(self) -> None:
-        if self.path in ("/", "/index.html"):
+        parsed = urlparse(self.path)
+        if parsed.path in ("/", "/index.html"):
             self._send_page()
-        elif self.path == "/stream.mjpg":
-            self._send_stream()
-        elif self.path == "/healthz":
+        elif parsed.path == "/stream.mjpg":
+            self._send_stream(self._wanted_fps(parsed.query))
+        elif parsed.path == "/healthz":
             self._send_bytes(b"ok\n", "text/plain")
         else:
             self.send_error(404)
@@ -105,15 +139,29 @@ class Handler(server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _wanted_fps(self, query: str) -> float:
+        """Requested rate, clamped. Falls back to the server default."""
+        try:
+            fps = float(parse_qs(query).get("fps", [self.default_fps])[0])
+        except ValueError:
+            return self.default_fps
+        return min(max(fps, 0.1), FPS_MAX)
+
     def _send_page(self) -> None:
         # str.replace rather than %-formatting or .format(): the CSS contains
         # both "100%" and curly braces, each of which collides with one of
         # those template languages.
-        body = (PAGE.replace("{w}", str(LORES_SIZE[0]))
+        buttons = "".join(
+            f'<button data-fps="{n}">{label} &middot; {n} fps</button>'
+            for n, label in FPS_PRESETS
+        )
+        body = (PAGE.replace("{buttons}", buttons)
+                    .replace("{default_fps}", str(int(self.default_fps)))
+                    .replace("{w}", str(LORES_SIZE[0]))
                     .replace("{h}", str(LORES_SIZE[1]))).encode()
         self._send_bytes(body, "text/html; charset=utf-8")
 
-    def _send_stream(self) -> None:
+    def _send_stream(self, fps: float) -> None:
         self.send_response(200)
         self.send_header("Age", "0")
         self.send_header("Cache-Control", "no-store, private")
@@ -132,13 +180,24 @@ class Handler(server.BaseHTTPRequestHandler):
         # it lit indefinitely.
         self.lamp.acquire()
         peer = self.address_string()
-        log.info("viewer connected: %s", peer)
+        log.info("viewer connected: %s at %g fps", peer, fps)
+        min_interval = 1.0 / fps
+        last_sent = 0.0
         try:
             while True:
                 frame = self.broker.next_frame()
                 if frame is None:
                     log.warning("no frame for 5 s -- closing stream to %s", peer)
                     break
+                now = time.monotonic()
+                # Compare against slightly less than the full interval. At the
+                # sensor rate the target interval equals the frame period, so a
+                # strict test drops every other frame to jitter and delivers
+                # about two thirds of what was asked for. The tolerance costs
+                # at most ~10 % overshoot at low rates and is worth it.
+                if now - last_sent < min_interval * 0.9:
+                    continue  # drop this frame to hold the requested rate
+                last_sent = now
                 self.wfile.write(b"--FRAME\r\n")
                 self.send_header("Content-Type", "image/jpeg")
                 self.send_header("Content-Length", str(len(frame)))
@@ -206,6 +265,9 @@ def main() -> int:
     p.add_argument("--blue-gain", type=float, default=1.5)
     p.add_argument("--bitrate", type=int, default=4_000_000)
     p.add_argument("--led-pin", type=int, default=17, help="GPIO pin for the IR illumination")
+    p.add_argument("--fps", type=float, default=10.0,
+                   help="default stream rate; viewers can override per connection "
+                        "with ?fps=N up to the sensor rate")
     p.add_argument("--stream-timeout", type=float, default=10.0,
                    help="drop a viewer that has not accepted data for this many "
                         "seconds, so a backgrounded tab cannot hold the lamp on")
@@ -224,6 +286,7 @@ def main() -> int:
     Handler.broker = broker
     Handler.lamp = lamp
     Handler.stream_timeout = args.stream_timeout
+    Handler.default_fps = min(max(args.fps, 0.1), FPS_MAX)
 
     httpd = Server(("", args.port), Handler)
     log.info("live view on http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",

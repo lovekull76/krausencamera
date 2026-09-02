@@ -98,6 +98,10 @@ ssh -f krausencamera 'cd ~/krausencamera && \
 Open **http://krausencamera:8080/**. The IR illumination switches on when the
 first viewer connects and off when the last one disappears.
 
+Pick a stream rate on the page: 2 fps to check whether anything is happening
+(33 kB/s), 30 fps to watch hops being drawn under during a dry hop (443 kB/s).
+The choice is per viewer and is remembered in the browser.
+
 Run with `--auto` to unlock exposure and white balance while aiming the housing.
 **Never when measuring** — the automatics would then compensate away exactly the
 brightness change that is to be measured as the krausen builds.

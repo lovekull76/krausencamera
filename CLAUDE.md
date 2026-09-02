@@ -221,8 +221,38 @@ Consequences to build in from the start:
    Remedy: always take frame A after a **fixed warm-up from a known state**, and
    log the lamp's prior state so the analysis can flag affected frames.
 
-### Thermal: solved by the architecture
+### Stream rate is chosen per viewer
 
-Without a sustained MJPEG stream the operating case is camera alone =
-**49.4 °C, no throttling**, ten degrees below the limit. The web view is
-sporadic. The enclosure therefore has a healthy margin to spend.
+The live view serves two different jobs, and they want different rates:
+
+- **checking whether anything is happening** — a couple of frames per second is
+  plenty, and cheap
+- **watching a dry hop** — hops being drawn under by the agitator is real motion
+  at real speed, and needs the full sensor rate to be worth looking at
+
+So the rate is per connection (`?fps=N`, presets on the page) rather than fixed.
+Frames above the requested rate are simply dropped; the encoder runs at sensor
+rate regardless. Measured 2026-09-03:
+
+| Requested | Measured | Bandwidth |
+|---|---|---|
+| 2 fps | 2.2 fps | 33 kB/s |
+| 10 fps (default) | 10.0 fps | 148 kB/s |
+| 30 fps | 30.0 fps | 443 kB/s |
+
+> The interval test compares against `min_interval * 0.9`. At the sensor rate the
+> target interval equals the frame period, so a strict comparison loses every
+> other frame to jitter and delivers about two thirds of what was asked for
+> (measured: 20.3 fps for a requested 30). The tolerance costs at most ~10 %
+> overshoot at low rates, which is why 2 fps measures 2.2.
+
+### Thermal: much less of a problem than feared
+
+Measured during a sustained 30 fps stream: **51.5 °C, nothing active in
+`throttled`** — nine degrees below the 60 °C soft limit. MJPEG encoding of the
+768×432 lores stream is hardware-accelerated and close to free.
+
+The earlier concern that the live view would be the system's problematic
+sustained load does not survive measurement. Watching a whole dry hop at full
+rate is fine. The enclosure still has to be thought through, but the margin is
+comfortable rather than tight.
