@@ -83,6 +83,7 @@ class Handler(server.BaseHTTPRequestHandler):
     # injected by main()
     broker: FrameBroker
     lamp: Lamp
+    stream_timeout: float
 
     def log_message(self, fmt: str, *args) -> None:
         log.debug("%s %s", self.address_string(), fmt % args)
@@ -119,6 +120,13 @@ class Handler(server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=FRAME")
         self.end_headers()
 
+        # A backgrounded tab or a minimised app stops reading but leaves the
+        # socket open. Without a timeout the kernel send buffer fills, write()
+        # blocks forever, and the lamp stays lit until TCP keepalive notices --
+        # two hours by default on Linux. The timeout turns that into a
+        # TimeoutError we can act on.
+        self.connection.settimeout(self.stream_timeout)
+
         # The viewer holds the lamp on for as long as the stream lives.
         # release() in the finally is what stops a crashed tab from leaving
         # it lit indefinitely.
@@ -137,7 +145,10 @@ class Handler(server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(frame)
                 self.wfile.write(b"\r\n")
-        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+        except TimeoutError:
+            log.info("viewer %s stopped reading for %.0f s (backgrounded?) -- closing",
+                     peer, self.stream_timeout)
+        except (BrokenPipeError, ConnectionResetError):
             pass
         finally:
             self.lamp.release()
@@ -195,6 +206,9 @@ def main() -> int:
     p.add_argument("--blue-gain", type=float, default=1.5)
     p.add_argument("--bitrate", type=int, default=4_000_000)
     p.add_argument("--led-pin", type=int, default=17, help="GPIO pin for the IR illumination")
+    p.add_argument("--stream-timeout", type=float, default=10.0,
+                   help="drop a viewer that has not accepted data for this many "
+                        "seconds, so a backgrounded tab cannot hold the lamp on")
     p.add_argument("--auto", action="store_true",
                    help="unlock exposure/white balance -- for aiming only")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -209,6 +223,7 @@ def main() -> int:
     picam2, broker = build_camera(args)
     Handler.broker = broker
     Handler.lamp = lamp
+    Handler.stream_timeout = args.stream_timeout
 
     httpd = Server(("", args.port), Handler)
     log.info("live view on http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",

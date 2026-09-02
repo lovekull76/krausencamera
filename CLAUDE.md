@@ -204,9 +204,15 @@ Consequences to build in from the start:
    near-black image). A connected viewer holding the lamp on **ruins frame B**.
    The measurement cycle must win: the live view drops a frame for the second it
    takes.
-2. **Reference counting with a timeout.** Lamp on if ≥1 viewer. A browser tab
-   that dies without closing cleanly would otherwise leave the lamp lit forever
-   — this needs a heartbeat or an inactivity timeout, not just "connection open".
+2. **Reference counting with a timeout.** Lamp on if ≥1 viewer — but "connection
+   open" is not the same as "somebody is watching". Measured 2026-09-03: a client
+   that stops reading while holding the socket open (a backgrounded tab, a
+   minimised phone app) leaves the server blocked in `wfile.write()` once the
+   kernel send buffer fills. The lamp then stays lit until TCP keepalive
+   notices — **two hours** by default on Linux.
+   Fixed with `connection.settimeout(--stream-timeout)`, default 10 s. Verified:
+   the viewer is dropped ~9 s after it stops reading, without the client ever
+   closing the socket. A normally reading viewer is unaffected.
 3. **⚠️ Thermal drift of the LED.** Light output falls as the package warms. A
    viewer watching for ten minutes leaves the lamp hot, and the next frame A
    comes out dimmer than one taken from cold. That is **exactly the brightness
