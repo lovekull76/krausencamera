@@ -1,0 +1,26 @@
+# Dropbox / macOS
+.DS_Store
+Icon?
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Bilder & video från kameran — ska aldrig i repot
+captures/
+timelapse/
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.h264
+
+# Lokalt
+*.log
+.env
+
+# Platsspecifikt — IP, MAC, nycklar. Publikt repo.
+LOCAL.md
