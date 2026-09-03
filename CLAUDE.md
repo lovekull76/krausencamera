@@ -170,6 +170,25 @@ Three traps that cost time, worth remembering:
   `setsid nohup … </dev/null` is what works reliably.
 - `timeout` is not present on macOS by default; use `ssh -f` instead.
 
+> **Viewer IPs are not what they seem over VPN.** A Tailscale subnet router
+> source-NATs by default, so every viewer arriving over the tunnel is logged as
+> the router's LAN address rather than its own. In this setup the router runs on
+> the Home Assistant host, which made ordinary phone-from-the-bedroom viewing
+> look like Home Assistant connecting to the stream — contradicting the explicit
+> decision to keep HASS out of the image path. It had not. Confirmed by checking
+> `$SSH_CLIENT` from the same tunnel: also the router's address.
+> `--snat-subnet-routes=false` preserves the real source, at the cost of needing
+> a route back to `100.64/10` on the Pi. Note it is the *subnet routing*, not the
+> exit-node function, that does this.
+
+> **The stream endpoint is unauthenticated and actuates hardware.** Anything on
+> the LAN or the tailnet can open the page and switch the IR lamp on. Harmless
+> while the LED is unwired, but once it is fitted an unnoticed viewer changes the
+> lamp's thermal state — which is exactly the drift that contaminates frame A.
+> `forced_off()` and the logged `was_lit_for` keep the measurement *correct*;
+> preventing unexpected actuation in the first place still wants a token in the
+> URL or binding to the Tailscale interface.
+
 Status 2026-09-03: live view verified at 30 fps on the lores stream. Reference
 counting tested with two overlapping viewers — the lamp stayed lit until the
 last one left. GPIO17 is driven for real via gpiozero 2.0.1.
