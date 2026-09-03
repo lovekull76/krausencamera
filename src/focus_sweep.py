@@ -86,6 +86,12 @@ def main() -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--exposure-us", type=int, default=60000)
     p.add_argument("--gain", type=float, default=1.0)
+    p.add_argument("--red-gain", type=float, default=1.0,
+                   help="ColourGains red. Neutral by default: under 850 nm IR a "
+                        "gain of 1.5 clips red and blue, and clipped pixels have "
+                        "zero gradient, which contaminates the sharpness metric "
+                        "with something that is not focus")
+    p.add_argument("--blue-gain", type=float, default=1.0)
     p.add_argument("--roi", type=float, default=0.5,
                    help="central fraction of the frame to measure, so the tube "
                         "mouth and vignetting do not dominate (default 0.5)")
@@ -106,7 +112,7 @@ def main() -> int:
     picam2.set_controls({
         "AfMode": 0,
         "AeEnable": False, "ExposureTime": args.exposure_us, "AnalogueGain": args.gain,
-        "AwbEnable": False, "ColourGains": (1.5, 1.5),
+        "AwbEnable": False, "ColourGains": (args.red_gain, args.blue_gain),
     })
     picam2.start()
     time.sleep(1.5)   # let the locked exposure take effect

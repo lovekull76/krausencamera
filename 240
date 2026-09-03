@@ -1,0 +1,4 @@
+  File "<stdin>", line 10
+    print(f"{exp us:>8} {gain:>5} {medel:>7} {max:>5} {mättat %:>9} { %:>8}")
+             ^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
