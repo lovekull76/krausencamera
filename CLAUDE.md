@@ -193,6 +193,50 @@ Status 2026-09-03: live view verified at 30 fps on the lores stream. Reference
 counting tested with two overlapping viewers — the lamp stayed lit until the
 last one left. GPIO17 is driven for real via gpiozero 2.0.1.
 
+## Focus sweep
+
+`src/focus_sweep.py` sweeps `LensPosition` and reports the sharpest setting from
+two independent metrics (Laplacian variance and mean gradient magnitude). It
+locks exposure, gain and white balance first — with auto-exposure running, a
+sharpness metric partly measures brightness drift between steps instead of focus.
+
+```bash
+ssh krausencamera 'cd ~/krausencamera && python3 focus_sweep.py --save /tmp/sharp.jpg'
+```
+
+The sweep doubles as a **distance measurement**: LensPosition is in dioptres, so
+the peak gives the object distance as 1000/position mm — useful for checking a
+mechanical setup without measuring it mechanically. The reference plane inside
+the lens is not known exactly, so treat the figure as repeatable rather than
+absolute.
+
+**First result, 2026-09-03, visible room light, provisional distance:**
+
+| | Run 1 | Run 2 |
+|---|---|---|
+| peak, Laplacian | 7.80 dpt | 7.70 dpt |
+| peak, gradient | 7.80 dpt | 7.40 dpt |
+| implied distance | 128 mm | 130 mm |
+
+The optimum is a **plateau, not a point**: 7.4–7.8 dpt all sit within 3 % of peak
+sharpness. Useful precision is therefore about ±0.2 dpt, and quoting two decimals
+would be false confidence. Peak sharpness is ~14× the defocused floor, so the
+target had ample contrast.
+
+Scale measured from a steel rule in frame: **~15.5 px/mm** at 2304×1296, so
+roughly 150 mm of horizontal field. Half-millimetre graduations are resolved.
+
+⚠️ Provisional on two counts: the working distance is not yet the final one, and
+the brief requires the sweep to be repeated under **850 nm IR**, whose focal
+plane differs from that of visible light.
+
+> **Settle time must scale with travel.** A fixed settle is fine for steps within
+> a sweep but not for the jump between sweeps. Measured: the coarse sweep ended
+> at 15.0 dpt and the fine sweep began at 6.50, and that first point read
+> lap=13.5 where its neighbours implied ~45 — the lens was still moving when the
+> frame was taken. Now `base + 40 ms per dioptre`; the same point then read 60.6
+> and fitted its neighbours.
+
 ## Workflow
 
 Develop locally in this folder → deploy with `rsync` over SSH → run as a systemd
