@@ -284,6 +284,31 @@ Consequences to build in from the start:
    Remedy: always take frame A after a **fixed warm-up from a known state**, and
    log the lamp's prior state so the analysis can flag affected frames.
 
+   **Measured 2026-09-04**, three 850 nm LEDs at 114 mA potted in a PE/PTFE rod,
+   locked exposure, cold start after 19 minutes off:
+
+   | | |
+   |---|---|
+   | cold start | 170.19 mean level |
+   | settled | 165.37 |
+   | **total droop** | **−2.83 %** |
+   | half the change | 1.7 min |
+   | 90 % | 8.5 min |
+   | 99 % | 19.1 min |
+
+   Two time constants stacked: the junction heats in under two minutes, the
+   surrounding plastic mass over roughly twenty. At ~1 % output per 10 °C that
+   is around 28 °C of package rise — the potting really is a thermos.
+
+   So `was_lit_for` spans about **2.8 %**, which is small next to the ~130 % the
+   scene brightens as the krausen rises toward the lamp. Worth flagging in
+   metadata, not worth correcting for. Ten minutes of warm-up puts you within
+   0.2 % of settled.
+
+   ⚠️ Beware measuring this on the tail: an earlier reading over 13 minutes of
+   an already-warm lamp showed only −0.3 % and led to the wrong conclusion that
+   the LEDs barely heat at all.
+
 ### Stream rate is chosen per viewer
 
 The live view serves two different jobs, and they want different rates:
