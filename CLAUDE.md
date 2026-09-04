@@ -193,6 +193,30 @@ Status 2026-09-03: live view verified at 30 fps on the lores stream. Reference
 counting tested with two overlapping viewers — the lamp stayed lit until the
 last one left. GPIO17 is driven for real via gpiozero 2.0.1.
 
+## ⚠️ YUV420 Y is limited range 16-235
+
+This has produced two wrong conclusions in this project, so it is worth stating
+plainly: `capture_array("main")` on a YUV420 configuration returns a Y plane in
+**video range, 16-235** — not 0-255. Black is 16 and white is 235.
+
+- A saturation test for `>= 250` on that plane **can never fire**. It once
+  reported 0 % saturation on a scene that was in fact clipping 8.8 %.
+- A dark frame reads ~15.5, not ~0. That was briefly mistaken for a light leak,
+  and a ceiling light was switched off to chase it. Measured 2026-09-04: the
+  residual was flat to within 0.18 counts across a 3x3 grid — a pedestal, not
+  light. Real leakage would be spatially structured, brightest near its entry.
+
+**Consequence for the laser centroid.** Frame B's background sits at 16. A
+centroid computed as `sum(I*x)/sum(I)` over an image with a uniform pedestal is
+pulled towards the frame centre, and the weaker the dot the worse the pull. The
+pedestal must be subtracted, or a threshold applied, **before** computing the
+centroid.
+
+This error is invisible after the fact: the calibration table absorbs the bias
+and everything looks consistent until the geometry changes and the table no
+longer applies. Convert to full range, or work in RGB888, when photometry or
+centroids matter.
+
 ## Focus sweep
 
 `src/focus_sweep.py` sweeps `LensPosition` and reports the sharpest setting from
