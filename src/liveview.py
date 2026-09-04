@@ -82,7 +82,14 @@ PAGE = """<!DOCTYPE html>
   const laser = document.getElementById("laser");
 
   function setFps(n) {
-    img.src = "/stream.mjpg?fps=" + n;
+    // Abort the previous stream before starting the next one. Changing img.src
+    // on a multipart stream leaves the old connection open but unread: the
+    // server fills its send buffer, blocks, and only drops it after
+    // --stream-timeout. A few quick changes exhaust the browser's six
+    // connections per host and the image freezes on its last painted frame.
+    img.removeAttribute("src");
+    // A token as well, so re-selecting a rate is never a no-op assignment.
+    img.src = "/stream.mjpg?fps=" + n + "&t=" + Date.now();
     rateButtons.forEach(b => b.classList.toggle("on", +b.dataset.fps === n));
     meta.textContent = "{w}\u00d7{h} \u00b7 " + n + " fps \u00b7 "
       + "~" + Math.round(n * 15) + " kB/s \u00b7 "
@@ -104,6 +111,10 @@ PAGE = """<!DOCTYPE html>
   led.onclick = () => toggle("/api/led", led.textContent !== "IR on");
   laser.onclick = () => toggle("/api/laser", laser.textContent !== "LASER ON");
   fetch("/api/state").then(r => r.json()).then(paint);
+
+  // Close the stream deterministically on navigation, so the viewer count
+  // reaches zero and the manual overrides -- the laser above all -- are reset.
+  addEventListener("pagehide", () => img.removeAttribute("src"));
 
   let start = {default_fps};
   try { start = +localStorage.getItem("fps") || start; } catch (e) {}
