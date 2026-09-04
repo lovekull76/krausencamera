@@ -109,8 +109,14 @@ brightness change that is to be measured as the krausen builds.
 ## Status
 
 Working: live view at 30 fps, reference-counted IR control.
-Remaining: focus calibration in IR, measurement cycle, centroid computation,
-MQTT, NAS archiving.
+Remaining: measurement cycle, centroid computation, MQTT, NAS archiving.
+
+Wanted: recording from the live view, for watching a dry hop back afterwards.
+Worth doing on the Pi rather than as a screen capture on a phone — the Pi has
+the full 2304×1296 main stream with known exposure and focus, hardware H.264
+encoding, and no dependency on a browser staying open for the length of a dry
+hop. Note that a recording has to hold its own reference on the illumination,
+independent of viewers, or the lamp goes dark the moment the tab is hidden.
 
 See [`CLAUDE.md`](CLAUDE.md) for measurement data and details, and
 [`BRIEFING.md`](BRIEFING.md) for optical geometry and calibration method.
