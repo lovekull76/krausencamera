@@ -217,6 +217,54 @@ and everything looks consistent until the geometry changes and the table no
 longer applies. Convert to full range, or work in RGB888, when photometry or
 centroids matter.
 
+## Laser: first calibration measurement (2026-09-04)
+
+Laser mounted, GPIO27, enable active high. Measured with `laser_probe.py` and
+`laser_repeatability.py`, against a flat matte target in the cardboard dummy.
+
+| | measured | expected |
+|---|---|---|
+| Dot radius from image centre | 194.3 px | — |
+| In object space at 12.71 px/mm | **15.30 mm** | 15.5 mm baseline |
+| Deviation | **−1.3 %** | — |
+| Sensitivity dr/dd at 130 mm | 1.50 px/mm | — |
+| ...extrapolated to 150 mm rest level | 1.12 px/mm | brief says ~1 px/mm |
+| Short-term repeatability of r | 0.070 px std | — |
+| ...in height | **47 µm** | brief says 300–500 µm |
+
+Two independent routes agree on the geometry: the dot lands where a 15.5 mm
+parallel baseline predicts, and the derived sensitivity matches the brief's
+optical analysis at rest level.
+
+### The dot saturates hard
+
+Peak stayed pinned at the limited-range ceiling from 12 ms all the way down to
+800 µs, and only came free at **200 µs** — sixty times shorter than frame A's
+exposure. A clipped dot has a flat top, so the centroid is computed over a
+plateau instead of a profile and the sub-pixel precision is gone.
+
+**Frame A and frame B therefore need different exposures**, set per frame.
+`ExposureTime` is a runtime control, so this needs no reconfiguration.
+
+### What 47 µm does and does not mean
+
+It is short-term repeatability on a **static matte surface** over 25 frames in
+a few seconds. It measures noise, not accuracy, and says nothing about drift or
+systematic error.
+
+It says nothing at all about **foam**, which is the real target: krausen is a
+live, irregular, translucent bubble surface where the beam scatters subsurface
+rather than reflecting off a defined plane, and where bursting bubbles move the
+spot. The honest conclusion is not a resolution figure but that **the optics and
+electronics are no longer the limiting factor** — whatever precision the
+instrument ends up with will be set by the foam.
+
+> **Observation:** the y centroid is ~8× noisier than x (0.180 vs 0.023 px),
+> consistent across 25 frames. Most likely temporal row noise in the sensor,
+> which biases a y centroid but averages out in x. Of no practical consequence
+> here — the measured quantity is the radius, which inherits mostly from x since
+> the dot sits 186 px sideways against 56 px up.
+
 ## Focus sweep
 
 `src/focus_sweep.py` sweeps `LensPosition` and reports the sharpest setting from

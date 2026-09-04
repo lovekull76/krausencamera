@@ -42,6 +42,13 @@ def grab(picam2, discard: int = 4) -> np.ndarray:
 
 
 def check(picam2, lamp: Lamp, settle: float, find_spot: bool) -> bool:
+    """find_spot selects the pass criterion as well as the reporting.
+
+    A flood lamp lifts the mean level; a laser dot barely moves it -- a few
+    hundred bright pixels in three million. Judging a point source by mean
+    change reports a working laser as failed, which it did on first run.
+    So point sources are judged on peak instead.
+    """
     lamp.shutdown()
     time.sleep(settle)
     off = grab(picam2)
@@ -65,7 +72,10 @@ def check(picam2, lamp: Lamp, settle: float, find_spot: bool) -> bool:
         yy, xx = np.unravel_index(int(np.argmax(d)), d.shape)
         print(f"  brightest new pixel: x={xx} y={yy}  (+{d.max():.0f})")
 
-    ok = delta > 2.0
+    if find_spot:
+        ok = (n["max"] - o["max"]) > 40           # a dot: judge on peak
+    else:
+        ok = delta > 2.0                          # a flood: judge on mean
     print(f"  => {'SWITCHES' if ok else 'NO DETECTABLE CHANGE'}")
     return ok
 
