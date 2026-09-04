@@ -141,18 +141,28 @@ class Lamp:
         finally:
             self.release()
 
-    @contextmanager
-    def forced_off(self):
-        """Force the lamp off regardless of viewers -- for frame B."""
+    def force_off(self) -> None:
+        """Hold the lamp off regardless of who else wants it lit."""
         with self._lock:
             self._forced_off += 1
             self._apply()
+
+    def unforce_off(self) -> None:
+        with self._lock:
+            if self._forced_off == 0:
+                log.warning("%s: unforce_off() without matching force_off()", self.name)
+                return
+            self._forced_off -= 1
+            self._apply()
+
+    @contextmanager
+    def forced_off(self):
+        """Force the lamp off regardless of viewers -- for frame B."""
+        self.force_off()
         try:
             yield self
         finally:
-            with self._lock:
-                self._forced_off -= 1
-                self._apply()
+            self.unforce_off()
 
     @contextmanager
     def settled(self):

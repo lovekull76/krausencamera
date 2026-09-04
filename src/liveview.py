@@ -56,30 +56,55 @@ PAGE = """<!DOCTYPE html>
          font: 14px system-ui, sans-serif; display: flex;
          flex-direction: column; align-items: center; gap: .75rem; padding: 1rem; }
   img { max-width: 100%; height: auto; border-radius: 4px; background: #000; }
-  .rates { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
   button { font: inherit; padding: .5rem .9rem; border-radius: 999px; cursor: pointer;
            border: 1px solid #444; background: #1c1c1c; color: #ccc; }
-  button.on { background: #ddd; color: #111; border-color: #ddd; }
+  .rates button.on { background: #ddd; color: #111; border-color: #ddd; }
+  .hw button.on { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+  .hw button.laser.on { background: #c62828; border-color: #c62828; color: #fff; }
   .meta { opacity: .6; font-variant-numeric: tabular-nums; text-align: center; }
 </style>
 </head>
 <body>
   <img src="" alt="Live view from the krausen camera">
-  <div class="rates">{buttons}</div>
+  <div class="row rates">{buttons}</div>
+  <div class="row hw">
+    <button id="led">IR</button>
+    <button id="laser" class="laser">Laser</button>
+  </div>
   <div class="meta"></div>
 <script>
   const img = document.querySelector("img");
   const meta = document.querySelector(".meta");
-  const buttons = [...document.querySelectorAll("button")];
+  // scoped to .rates -- the hardware toggles are buttons too
+  const rateButtons = [...document.querySelectorAll(".rates button")];
+  const led = document.getElementById("led");
+  const laser = document.getElementById("laser");
+
   function setFps(n) {
     img.src = "/stream.mjpg?fps=" + n;
-    buttons.forEach(b => b.classList.toggle("on", +b.dataset.fps === n));
+    rateButtons.forEach(b => b.classList.toggle("on", +b.dataset.fps === n));
     meta.textContent = "{w}\u00d7{h} \u00b7 " + n + " fps \u00b7 "
       + "~" + Math.round(n * 15) + " kB/s \u00b7 "
-      + "IR illumination is on while this page is open";
+      + "IR illumination follows the viewer count unless overridden below";
     try { localStorage.setItem("fps", n); } catch (e) {}
   }
-  buttons.forEach(b => b.onclick = () => setFps(+b.dataset.fps));
+  rateButtons.forEach(b => b.onclick = () => setFps(+b.dataset.fps));
+
+  function paint(st) {
+    led.classList.toggle("on", st.led);
+    laser.classList.toggle("on", st.laser);
+    led.textContent = st.led ? "IR on" : "IR forced off";
+    laser.textContent = st.laser ? "LASER ON" : "Laser off";
+  }
+  async function toggle(path, want) {
+    const r = await fetch(path + "?on=" + (want ? 1 : 0), { method: "POST" });
+    paint(await r.json());
+  }
+  led.onclick = () => toggle("/api/led", led.textContent !== "IR on");
+  laser.onclick = () => toggle("/api/laser", laser.textContent !== "LASER ON");
+  fetch("/api/state").then(r => r.json()).then(paint);
+
   let start = {default_fps};
   try { start = +localStorage.getItem("fps") || start; } catch (e) {}
   setFps(start);
@@ -87,6 +112,53 @@ PAGE = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+
+class Controls:
+    """Manual overrides from the web UI, on top of the viewer reference count.
+
+    Everything here is cleared when the last viewer disconnects: a closed tab
+    must not leave the laser on, and it must not leave the illumination forced
+    dark for whoever connects next.
+    """
+
+    def __init__(self, led: Lamp, laser: Lamp) -> None:
+        self._lock = threading.Lock()
+        self._led = led
+        self._laser = laser
+        self.led_forced_off = False
+        self.laser_on = False
+
+    def set_led(self, on: bool) -> None:
+        with self._lock:
+            want_forced = not on
+            if want_forced == self.led_forced_off:
+                return
+            if want_forced:
+                self._led.force_off()
+            else:
+                self._led.unforce_off()
+            self.led_forced_off = want_forced
+            log.info("web: illumination %s", "forced off" if want_forced else "released")
+
+    def set_laser(self, on: bool) -> None:
+        with self._lock:
+            if on == self.laser_on:
+                return
+            if on:
+                self._laser.acquire()
+            else:
+                self._laser.release()
+            self.laser_on = on
+            log.info("web: laser %s", "ON" if on else "off")
+
+    def reset(self) -> None:
+        self.set_led(True)
+        self.set_laser(False)
+
+    def state(self) -> dict:
+        with self._lock:
+            return {"led": not self.led_forced_off, "laser": self.laser_on}
 
 
 class FrameBroker(io.BufferedIOBase):
@@ -115,8 +187,12 @@ class Handler(server.BaseHTTPRequestHandler):
     # injected by main()
     broker: FrameBroker
     lamp: Lamp
+    controls: Controls
     stream_timeout: float
     default_fps: float
+
+    _viewers = 0
+    _viewers_lock = threading.Lock()
 
     def log_message(self, fmt: str, *args) -> None:
         log.debug("%s %s", self.address_string(), fmt % args)
@@ -127,10 +203,32 @@ class Handler(server.BaseHTTPRequestHandler):
             self._send_page()
         elif parsed.path == "/stream.mjpg":
             self._send_stream(self._wanted_fps(parsed.query))
+        elif parsed.path == "/api/state":
+            self._send_json(self.controls.state())
         elif parsed.path == "/healthz":
             self._send_bytes(b"ok\n", "text/plain")
         else:
             self.send_error(404)
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        on = parse_qs(parsed.query).get("on", ["1"])[0] not in ("0", "false", "off")
+        # Log the request itself, with the client, not only the resulting state
+        # change. A no-op request leaves no other trace, and when hardware that
+        # emits a laser beam is involved it should be clear who asked for it.
+        log.info("web request from %s: %s on=%s", self.address_string(), parsed.path, on)
+        if parsed.path == "/api/led":
+            self.controls.set_led(on)
+        elif parsed.path == "/api/laser":
+            self.controls.set_laser(on)
+        else:
+            self.send_error(404)
+            return
+        self._send_json(self.controls.state())
+
+    def _send_json(self, obj: dict) -> None:
+        import json
+        self._send_bytes(json.dumps(obj).encode(), "application/json")
 
     def _send_bytes(self, body: bytes, ctype: str) -> None:
         self.send_response(200)
@@ -179,6 +277,8 @@ class Handler(server.BaseHTTPRequestHandler):
         # release() in the finally is what stops a crashed tab from leaving
         # it lit indefinitely.
         self.lamp.acquire()
+        with Handler._viewers_lock:
+            Handler._viewers += 1
         peer = self.address_string()
         log.info("viewer connected: %s at %g fps", peer, fps)
         min_interval = 1.0 / fps
@@ -211,7 +311,12 @@ class Handler(server.BaseHTTPRequestHandler):
             pass
         finally:
             self.lamp.release()
-            log.info("viewer gone: %s", peer)
+            with Handler._viewers_lock:
+                Handler._viewers -= 1
+                last = Handler._viewers == 0
+            if last:
+                self.controls.reset()
+            log.info("viewer gone: %s%s", peer, " (last -- manual controls reset)" if last else "")
 
 
 class Server(socketserver.ThreadingMixIn, server.HTTPServer):
@@ -265,6 +370,7 @@ def main() -> int:
     p.add_argument("--blue-gain", type=float, default=1.5)
     p.add_argument("--bitrate", type=int, default=4_000_000)
     p.add_argument("--led-pin", type=int, default=17, help="GPIO pin for the IR illumination")
+    p.add_argument("--laser-pin", type=int, default=27, help="GPIO pin for the laser enable")
     p.add_argument("--fps", type=float, default=10.0,
                    help="default stream rate; viewers can override per connection "
                         "with ?fps=N up to the sensor rate")
@@ -282,9 +388,11 @@ def main() -> int:
     )
 
     lamp = Lamp("IR illumination", args.led_pin)
+    laser = Lamp("laser", args.laser_pin, settle_s=0.1)
     picam2, broker = build_camera(args)
     Handler.broker = broker
     Handler.lamp = lamp
+    Handler.controls = Controls(lamp, laser)
     Handler.stream_timeout = args.stream_timeout
     Handler.default_fps = min(max(args.fps, 0.1), FPS_MAX)
 
@@ -298,6 +406,7 @@ def main() -> int:
     finally:
         httpd.shutdown()
         picam2.stop_recording()
+        laser.shutdown()
         lamp.shutdown()
     return 0
 
