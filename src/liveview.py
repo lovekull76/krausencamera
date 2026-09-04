@@ -81,7 +81,9 @@ PAGE = """<!DOCTYPE html>
   const led = document.getElementById("led");
   const laser = document.getElementById("laser");
 
+  let currentFps = 0;
   function setFps(n) {
+    currentFps = n;
     // Abort the previous stream before starting the next one. Changing img.src
     // on a multipart stream leaves the old connection open but unread: the
     // server fills its send buffer, blocks, and only drops it after
@@ -115,6 +117,16 @@ PAGE = """<!DOCTYPE html>
   // Close the stream deterministically on navigation, so the viewer count
   // reaches zero and the manual overrides -- the laser above all -- are reset.
   addEventListener("pagehide", () => img.removeAttribute("src"));
+
+  // A backgrounded tab keeps draining the socket, so the server still counts it
+  // as a healthy viewer and holds the illumination on for nobody. The reference
+  // count should follow attention, not merely an open connection -- an LED
+  // potted in a rod with no heat path should not sit warming because a tab was
+  // left open. Hiding the tab drops the stream; showing it picks it up again.
+  addEventListener("visibilitychange", () => {
+    if (document.hidden) img.removeAttribute("src");
+    else setFps(currentFps);
+  });
 
   let start = {default_fps};
   try { start = +localStorage.getItem("fps") || start; } catch (e) {}
