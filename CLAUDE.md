@@ -225,16 +225,28 @@ Laser mounted, GPIO27, enable active high. Measured with `laser_probe.py` and
 | | measured | expected |
 |---|---|---|
 | Dot radius from image centre | 194.3 px | — |
-| In object space at 12.71 px/mm | **15.30 mm** | 15.5 mm baseline |
-| Deviation | **−1.3 %** | — |
+| In object space at 12.71 px/mm | **15.29 mm** | 15.0 mm baseline (CAD) |
+| Deviation | **+1.9 %** | — |
 | Sensitivity dr/dd at 130 mm | 1.50 px/mm | — |
 | ...extrapolated to 150 mm rest level | 1.12 px/mm | brief says ~1 px/mm |
 | Short-term repeatability of r | 0.070 px std | — |
 | ...in height | **47 µm** | brief says 300–500 µm |
 
-Two independent routes agree on the geometry: the dot lands where a 15.5 mm
-parallel baseline predicts, and the derived sensitivity matches the brief's
-optical analysis at rest level.
+The derived sensitivity matches the brief's optical analysis at rest level, and
+the dot lands within a couple of percent of where the CAD baseline predicts.
+
+> **What this check can and cannot establish.** It agrees to ~2 %, but it cannot
+> discriminate 15.0 mm from the 15.5 mm the brief quotes — against 15.5 the same
+> measurement reads −1.4 %. The scale of 12.71 px/mm comes from an FFT of a
+> folding rule, assuming exactly 1 mm graduations lying square in the focal
+> plane, and a couple of percent of error there passes straight through.
+>
+> Nor can it be inverted to calibrate the scale from the known baseline, because
+> the laser's mounting angle is unknown — one of the three reasons the brief
+> gives for building a lookup table instead of computing the triangulation.
+>
+> So: a consistency check at the few-percent level, and no more. Which is
+> exactly why the table is measured against known liquid levels.
 
 ### The dot saturates hard
 
