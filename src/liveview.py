@@ -41,7 +41,11 @@ LORES_SIZE = (768, 432)
 # agitator during a dry hop needs the lot. So the rate is chosen per viewer
 # rather than fixed, and the frames not sent are simply dropped -- the encoder
 # runs at sensor rate regardless.
-FPS_PRESETS = [(2, "Check"), (10, "Watch"), (30, "Agitation")]
+# 24 rather than 30 as the top preset: at the ~37 ms exposure a stopped-down
+# lens needs, a frame cannot be shorter than 37 ms, so the sensor tops out near
+# 26 fps. A 30 preset would quietly deliver 26. 24 is the highest round number
+# the camera can actually honour, so the number chosen is the number delivered.
+FPS_PRESETS = [(2, "Low"), (10, "Mid"), (24, "High")]
 FPS_MAX = 30
 
 PAGE = """<!DOCTYPE html>
@@ -322,7 +326,7 @@ class Handler(server.BaseHTTPRequestHandler):
         peer = self.address_string()
         log.info("viewer connected: %s at %g fps", peer, fps)
         min_interval = 1.0 / fps
-        last_sent = 0.0
+        next_due = 0.0
         try:
             while True:
                 frame = self.broker.next_frame()
@@ -330,14 +334,20 @@ class Handler(server.BaseHTTPRequestHandler):
                     log.warning("no frame for 5 s -- closing stream to %s", peer)
                     break
                 now = time.monotonic()
-                # Compare against slightly less than the full interval. At the
-                # sensor rate the target interval equals the frame period, so a
-                # strict test drops every other frame to jitter and delivers
-                # about two thirds of what was asked for. The tolerance costs
-                # at most ~10 % overshoot at low rates and is worth it.
-                if now - last_sent < min_interval * 0.9:
+                # Advance a fixed schedule rather than restarting the interval
+                # at each frame sent. Resetting to "now" can only ever deliver
+                # whole divisions of the source rate: against a 30 fps sensor a
+                # request for 24 asks for 41.7 ms, which falls between one and
+                # two source frames, so it waits for the second one and yields
+                # 15. Accumulating the due time instead alternates one- and
+                # two-frame gaps and averages out at the rate asked for.
+                if next_due == 0.0:
+                    next_due = now
+                if now < next_due - 0.002:
                     continue  # drop this frame to hold the requested rate
-                last_sent = now
+                next_due += min_interval
+                if next_due < now:
+                    next_due = now + min_interval   # source slower than asked
                 self.wfile.write(b"--FRAME\r\n")
                 self.send_header("Content-Type", "image/jpeg")
                 self.send_header("Content-Length", str(len(frame)))
@@ -378,6 +388,14 @@ def build_camera(args):
 
     controls = {"AfMode": 0, "LensPosition": args.lens_position}
     if args.auto:
+        # Give the auto exposure room to go past 33 ms. Frame duration bounds
+        # exposure, so leaving it at the default caps AEC exactly where a
+        # stopped-down lens starts needing more light. The frame rate drops on
+        # its own when a long exposure is actually chosen.
+        # Bounded by the top preset's period rather than left open: given room,
+        # the auto exposure spends it on exposure time and the rate collapses.
+        # Measured with a 100 ms ceiling, a request for 24 fps delivered 15.2.
+        controls["FrameDurationLimits"] = (33333, args.max_frame_duration_us)
         log.warning("--auto: exposure and white balance UNLOCKED. Aiming only.")
     else:
         controls.update(
@@ -410,6 +428,12 @@ def main() -> int:
     p.add_argument("--red-gain", type=float, default=1.5)
     p.add_argument("--blue-gain", type=float, default=1.5)
     p.add_argument("--bitrate", type=int, default=4_000_000)
+    p.add_argument("--max-frame-duration-us", type=int, default=41_000,
+                   help="longest frame the auto exposure may choose. Defaults to "
+                        "the top preset's period, so the camera can always "
+                        "deliver the rate printed on the button; a dark scene "
+                        "then costs gain rather than frame rate. Raise it to let "
+                        "the exposure grow instead")
     p.add_argument("--led-pin", type=int, default=17, help="GPIO pin for the IR illumination")
     p.add_argument("--laser-pin", type=int, default=27, help="GPIO pin for the laser enable")
     p.add_argument("--fps", type=float, default=10.0,
