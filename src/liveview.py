@@ -137,6 +137,23 @@ PAGE = """<!DOCTYPE html>
 """
 
 
+def frame_duration_for(exposure_us: int) -> tuple[int, int]:
+    """Frame duration limits that allow the requested exposure.
+
+    The default video configuration pins FrameDurationLimits at (33333, 33333),
+    which caps exposure at 33 ms -- a frame cannot be shorter than its own
+    exposure. The brief calls for 50-100 ms as the first thing to reach for when
+    light is short, and stopping down makes that necessary rather than optional,
+    so the limits are derived from the exposure instead of left at the default.
+
+    The frame rate drops accordingly. That costs nothing for a measurement of
+    two frames per minute, and the live view only slows when a long exposure is
+    actually asked for.
+    """
+    d = max(33333, exposure_us + 1000)
+    return (d, d)
+
+
 class Controls:
     """Manual overrides from the web UI, on top of the viewer reference count.
 
@@ -364,6 +381,7 @@ def build_camera(args):
         log.warning("--auto: exposure and white balance UNLOCKED. Aiming only.")
     else:
         controls.update(
+            FrameDurationLimits=frame_duration_for(args.exposure_us),
             AeEnable=False,
             ExposureTime=args.exposure_us,
             AnalogueGain=args.gain,

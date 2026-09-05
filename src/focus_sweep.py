@@ -32,7 +32,26 @@ import time
 import numpy as np
 from picamera2 import Picamera2
 
+from illumination import Lamp
+
 SIZE = (2304, 1296)
+
+
+def frame_duration_for(exposure_us: int) -> tuple[int, int]:
+    """Frame duration limits that allow the requested exposure.
+
+    The default video configuration pins FrameDurationLimits at (33333, 33333),
+    which caps exposure at 33 ms -- a frame cannot be shorter than its own
+    exposure. The brief calls for 50-100 ms as the first thing to reach for when
+    light is short, and stopping down makes that necessary rather than optional,
+    so the limits are derived from the exposure instead of left at the default.
+
+    The frame rate drops accordingly. That costs nothing for a measurement of
+    two frames per minute, and the live view only slows when a long exposure is
+    actually asked for.
+    """
+    d = max(33333, exposure_us + 1000)
+    return (d, d)
 
 
 def sharpness(y: np.ndarray) -> tuple[float, float]:
@@ -58,14 +77,19 @@ def measure(picam2, roi, settle_s: float, discard: int) -> tuple[float, float]:
 def settle_for(travel: float, base: float) -> float:
     """Settle time scaled by how far the lens actually has to move.
 
-    A fixed settle is fine for the small steps within a sweep but not for the
-    jump between sweeps. Measured 2026-09-03: the coarse sweep ended at 15.0 dpt
-    and the fine sweep began at 6.50, and that first point read lap=13.5 where
-    its neighbours implied ~45 -- the lens was still in transit when the frame
-    was taken. The voice-coil actuator needs roughly a further 40 ms per dioptre
-    of travel.
+    Measured directly 2026-09-05 by commanding a 7.35 dioptre jump and sampling
+    sharpness every 0.24 s: nothing moves for the first ~0.7 s, the transition
+    happens over the next ~0.3 s, and the reading is stable from ~1.2 s. Same
+    from both directions. Most of that is not the actuator but pipeline latency
+    -- set_controls is queued and the buffer queue is several frames deep.
+
+    The earlier value of 0.35 + 0.04/dioptre sampled well inside the transition.
+    It went unnoticed while the target had enough contrast to give a peak
+    anyway, and only showed up as a completely flat curve once an aperture cut
+    the contrast ratio from 3.8x to 1.7x. Any depth-of-field figure measured
+    before this was corrected is smeared and reads too wide.
     """
-    return base + 0.04 * travel
+    return base + 0.06 * travel
 
 
 def sweep(picam2, positions, roi, args, previous: float | None = None):
@@ -85,6 +109,10 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--exposure-us", type=int, default=60000)
+    p.add_argument("--led-pin", type=int, default=17,
+                   help="GPIO for the IR illumination, held on for the sweep")
+    p.add_argument("--no-led", action="store_true",
+                   help="do not touch the illumination (external or already lit)")
     p.add_argument("--gain", type=float, default=1.0)
     p.add_argument("--red-gain", type=float, default=1.0,
                    help="ColourGains red. Neutral by default: under 850 nm IR a "
@@ -98,8 +126,11 @@ def main() -> int:
     p.add_argument("--coarse-steps", type=int, default=21)
     p.add_argument("--fine-span", type=float, default=1.0)
     p.add_argument("--fine-steps", type=int, default=21)
-    p.add_argument("--settle", type=float, default=0.35)
-    p.add_argument("--discard", type=int, default=3)
+    p.add_argument("--settle", type=float, default=0.60,
+                   help="base settle before capture; the lens needs ~1.2 s in "
+                        "total, most of it pipeline latency rather than the actuator")
+    p.add_argument("--discard", type=int, default=6,
+                   help="frames dropped after moving, to flush the buffer queue")
     p.add_argument("--save", default="", help="write a JPEG at the sharpest position")
     args = p.parse_args()
 
@@ -110,17 +141,40 @@ def main() -> int:
     print(f"LensPosition range: {lo} .. {hi} dioptres (default {default})")
 
     picam2.set_controls({
+        "FrameDurationLimits": frame_duration_for(args.exposure_us),
         "AfMode": 0,
         "AeEnable": False, "ExposureTime": args.exposure_us, "AnalogueGain": args.gain,
         "AwbEnable": False, "ColourGains": (args.red_gain, args.blue_gain),
     })
+    # Hold the illumination on for the whole sweep. It used to be driven
+    # externally and always lit, so this was not needed; once it moved to GPIO
+    # the tool silently swept a dark scene and produced a flat curve at the
+    # noise floor. Nothing failed -- it just measured nothing.
+    lamp = None
+    if not args.no_led:
+        lamp = Lamp("IR illumination", args.led_pin)
+        lamp.acquire()
+
     picam2.start()
     time.sleep(1.5)   # let the locked exposure take effect
 
     h, w = SIZE[1], SIZE[0]
     fh, fw = int(h * args.roi / 2), int(w * args.roi / 2)
     roi = (h // 2 - fh, h // 2 + fh, w // 2 - fw, w // 2 + fw)
-    print(f"ROI: {roi[3]-roi[2]}x{roi[1]-roi[0]} px, centred\n")
+    print(f"ROI: {roi[3]-roi[2]}x{roi[1]-roi[0]} px, centred")
+
+    # A flat curve at the noise floor is indistinguishable from a bad target,
+    # so check there is actually light and contrast before sweeping.
+    for _ in range(6):
+        picam2.capture_array("main")
+    probe = picam2.capture_array("main")[:SIZE[1]].astype(np.float32)
+    probe = probe[roi[0]:roi[1], roi[2]:roi[3]]
+    print(f"ROI level: mean {probe.mean():.1f}, std {probe.std():.1f}")
+    if probe.mean() < 25:
+        print("WARNING: the region of interest is nearly dark. Is the "
+              "illumination on? A dark sweep produces a flat curve that looks "
+              "like a focus problem.")
+    print()
 
     try:
         print("=== coarse sweep ===")
@@ -154,6 +208,8 @@ def main() -> int:
             print(f"saved sharpest frame to {args.save}")
     finally:
         picam2.stop()
+        if lamp is not None:
+            lamp.shutdown()
     return 0
 
 

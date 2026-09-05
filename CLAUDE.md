@@ -277,6 +277,54 @@ instrument ends up with will be set by the foam.
 > here — the measured quantity is the radius, which inherits mostly from x since
 > the dot sits 186 px sideways against 56 px up.
 
+## Aperture: 1.5 mm printed stop (2026-09-05)
+
+A printed ABS-GF sleeve over the lens, hole printed rather than drilled.
+
+**It stops down exactly as intended.** Signal above the pedestal fell from
+148.76 to 47.89 at identical exposure, a ratio of **0.322** against 0.32
+predicted for a 1.5 mm hole. Working back, `N = 1.8/sqrt(0.322) = 3.17`, so
+`D = 4.74/3.17 = 1.50 mm`. No drilling needed.
+
+Depth of field measured from the sweep curve, illumination on, settle corrected:
+
+| criterion | dioptres | distance | depth |
+|---|---|---|---|
+| 90 % | 6.00–8.00 | 125–167 mm | 42 mm |
+| 80 % | 5.50–8.50 | 118–182 mm | **64 mm** |
+| 70 % | 5.00–9.00 | 111–200 mm | 89 mm |
+
+The normal krausen band of 10–30 mm fits with wide margin. Exposure for frame A
+becomes 37 ms, which needs the frame-duration cap lifted (below).
+
+> **The 23 mm figure from 2026-09-03 is not a valid comparison.** It was derived
+> from the sweep's width in dioptres rather than measured by moving the target,
+> and it was taken with a settle time now known to be too short. Re-measure
+> without the sleeve, with the corrected tool, before quoting any ratio.
+
+### Frame duration caps exposure
+
+The default video configuration pins `FrameDurationLimits` at `(33333, 33333)`,
+so exposure cannot exceed 33 ms — a frame cannot be shorter than its own
+exposure. The brief calls for 50–100 ms as the first thing to reach for when
+light is short, and stopping down makes that necessary. `frame_duration_for()`
+now derives the limits from the requested exposure. Verified: a request for
+37000 µs yields `ExposureTime 36982`, `FrameDuration 37997`.
+
+### Two faults found in the sweep tool
+
+**It never switched the illumination on.** The tool worked while the LEDs were
+driven externally and always lit. Once they moved to GPIO17 it silently swept a
+dark scene and returned a flat curve at the noise floor — no error, just a
+plausible-looking result that meant nothing. It now holds the lamp for the
+duration and warns if the region of interest is dark.
+
+**The settle time was too short.** Measured directly by commanding a 7.35
+dioptre jump and sampling every 0.24 s: nothing moves for ~0.7 s, the transition
+takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
+directions. Most of that is pipeline latency, not the actuator. The old
+`0.35 + 0.04/dioptre` sampled inside the transition.
+
 ## Focus sweep
 
 `src/focus_sweep.py` sweeps `LensPosition` and reports the sharpest setting from
