@@ -97,8 +97,10 @@ PAGE = """<!DOCTYPE html>
     // A token as well, so re-selecting a rate is never a no-op assignment.
     img.src = "/stream.mjpg?fps=" + n + "&t=" + Date.now();
     rateButtons.forEach(b => b.classList.toggle("on", +b.dataset.fps === n));
+    // No bandwidth estimate: it was a constant calibrated for one resolution
+    // and silently became wrong by 3x when the stream grew. A stale number
+    // reads as information.
     meta.textContent = "{w}\u00d7{h} \u00b7 " + n + " fps \u00b7 "
-      + "~" + Math.round(n * 15) + " kB/s \u00b7 "
       + "IR illumination follows the viewer count unless overridden below";
     try { localStorage.setItem("fps", n); } catch (e) {}
   }
