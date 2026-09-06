@@ -489,6 +489,49 @@ During active fermentation the surface is foam, which scatters well, so this
 does not touch the main measurement. It touches the **zero reading at fill** and
 the **packing phase**, and at packing there is usually foam as well.
 
+### The spot is an image of the beam's path, not a point
+
+Adding milk to the water bracketed the turbidity, and the result changed what to
+measure. Water column 175 mm across, 25 mm deep, 601 ml:
+
+| milk | radius | centroid depth | peak | spot px |
+|---|---|---|---|---|
+| 0 % | 171.7 | 25.5 mm | 64 | 144 |
+| 0.17 % | 172.6 | 24.3 mm | 25 | 250 |
+| 0.83 % | 181.9 | 12.4 mm | 47 | 677 |
+| 1.50 % | 182.5 | 11.6 mm | 51 | 939 |
+| 2.33 % | 182.5 | 11.6 mm | 54 | 1403 |
+
+The centroid stopped moving at 182.5 while the spot kept growing, which is the
+signature of something other than a point return. A spot of 1403 px is a disc of
+radius 21 px, and the whole surface-to-bottom range spans 20.6 px. The spot **is**
+the beam's illuminated path through the liquid, imaged.
+
+Its radial profile confirms it. At 30 % of peak the spot runs from r = 170.3 to
+193.9, against 172.1 for the bottom and 192.7 for the surface — the full column.
+
+### So read the outer edge for liquid, the centroid for foam
+
+| threshold | outer edge | implied depth |
+|---|---|---|
+| 0.50 | 189.7 | +3.2 mm |
+| **0.30** | **193.9** | **−1.3 mm** |
+| 0.20 | 198.6 | −6.2 mm |
+
+The edge at a 30 % threshold finds the surface within about a millimetre, where
+the centroid is 11.6 mm deep. The edge is threshold-dependent, so the threshold
+must be fixed and calibrated rather than chosen per reading.
+
+**And the spot's radial extent is a free diagnostic.** A compact spot means the
+beam stops at the surface — foam, or liquid turbid enough — and the centroid is
+right, with the 0.07 px precision measured on paper. A radially drawn-out spot
+means the beam is penetrating, the centroid is systematically deep, and the edge
+is the reading to take.
+
+The algorithm therefore does not need to be told whether it is looking at foam
+or liquid. It can measure that, and the same number becomes a quality flag worth
+logging with every reading.
+
 ### Two cheap guards
 
 - **Flag more than one spot.** A second return means the situation is not what

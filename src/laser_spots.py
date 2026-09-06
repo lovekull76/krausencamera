@@ -35,13 +35,19 @@ def grab(picam2, n: int = 6) -> np.ndarray:
     return picam2.capture_array("main")[:SIZE[1]].astype(np.float32)
 
 
-def find_spots(diff: np.ndarray, max_spots: int, frac: float, radius: int):
+def find_spots(diff: np.ndarray, max_spots: int, frac: float, radius: int,
+               min_peak: float = 20.0):
     """Greedy peak picking: take the maximum, blank a disc, repeat.
 
     Enough for a handful of well-separated spots and needs no scipy.
+
+    The floor is both relative and absolute. A purely relative one tracks the
+    strongest spot downwards: when a turbid layer halved the real return, the
+    threshold halved with it and started reporting sensor noise at radius 1200
+    as spots.
     """
     work = diff.copy()
-    floor = frac * work.max()
+    floor = max(frac * work.max(), min_peak)
     yy, xx = np.mgrid[0:work.shape[0], 0:work.shape[1]]
     out = []
     for _ in range(max_spots):
@@ -73,6 +79,8 @@ def main() -> int:
     p.add_argument("--frac", type=float, default=0.15,
                    help="keep spots down to this fraction of the strongest")
     p.add_argument("--blank-radius", type=int, default=60)
+    p.add_argument("--min-peak", type=float, default=20.0,
+                   help="absolute floor, so a weak scene does not report noise")
     args = p.parse_args()
 
     from picamera2 import Picamera2
@@ -95,7 +103,7 @@ def main() -> int:
         series = []
         for i in range(args.frames):
             spots = find_spots(grab(picam2, 3) - dark, args.max_spots,
-                               args.frac, args.blank_radius)
+                               args.frac, args.blank_radius, args.min_peak)
             series.append(spots)
             line = "  ".join(f"r={s['r']:6.1f} pk={s['peak']:4.0f}" for s in spots)
             print(f"  ruta {i+1}: {len(spots)} flackar   {line}", flush=True)
