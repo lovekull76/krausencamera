@@ -532,6 +532,50 @@ The algorithm therefore does not need to be told whether it is looking at foam
 or liquid. It can measure that, and the same number becomes a quality flag worth
 logging with every reading.
 
+### The principal point is not the image centre
+
+The dot's vertical offset had drifted between sessions -- +56, +37, +63, +71 px
+-- and computing the laser's height from it as `v = b·dy/dx` gave 5.9 mm, which
+the mechanics rule out: camera and laser sit in the same plane by construction.
+
+The error was assuming the optical axis meets the sensor at its centre. It does
+not, and the two explanations predict opposite things: a principal point offset
+is a **constant** in the image, while a real height offset on the laser is imaged
+like the sideways one and therefore **grows** as distance shrinks.
+
+White paper at two measured distances settles it:
+
+| | dx | dy |
+|---|---|---|
+| 182 mm | 162.46 ± 0.06 | 70.36 ± 0.24 |
+| 84 mm | 342.54 ± 0.12 | 71.72 ± 0.25 |
+| predicted, offset principal point | — | 70.4 |
+| predicted, high laser | — | 152.4 |
+
+`dx` more than doubled while `dy` moved 1.4 px. Solving both axes:
+
+```
+principal point      (1160, 717)      +8.1, +69.2 px from the image centre
+laser height offset  0.113 mm         zero, as built
+f·b                  28092 px·mm  ->  f = 5.24 mm
+
+distance             d = 28092 / (x − 1160)
+```
+
+The principal point sits 0.19 mm from the sensor centre, an ordinary tolerance.
+It also explains an earlier contradiction: measuring radius from the image
+centre put the far end of a target at 209 mm inside a box 182 mm deep.
+
+**Consequences.** The measurement variable is `x − 1160`, a horizontal distance
+from the principal point, not a radius from the image centre — which is both
+more sensitive and free of a needless nonlinearity. The region of interest is a
+horizontal band centred on y = 717.
+
+> Two points against two parameters is an exact fit and validates nothing. The
+> `LensPosition` model failed exactly this way: fitted to two points, it
+> predicted 11.45 for the third where the measurement gave 13.16. This model
+> predicts `dx = 220.9` at 132 mm and is untested until that is measured.
+
 ### Two cheap guards
 
 - **Flag more than one spot.** A second return means the situation is not what
