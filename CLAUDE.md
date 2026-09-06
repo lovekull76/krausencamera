@@ -571,10 +571,31 @@ from the principal point, not a radius from the image centre — which is both
 more sensitive and free of a needless nonlinearity. The region of interest is a
 horizontal band centred on y = 717.
 
-> Two points against two parameters is an exact fit and validates nothing. The
-> `LensPosition` model failed exactly this way: fitted to two points, it
-> predicted 11.45 for the third where the measurement gave 13.16. This model
-> predicts `dx = 220.9` at 132 mm and is untested until that is measured.
+**Tested, and it held.** Two points against two parameters is an exact fit that
+validates nothing — the `LensPosition` model failed exactly this way, predicting
+11.45 for its third point where the measurement gave 13.16. This one predicted
+`dx = 220.9` at 132 mm and measured 218.79, an error of 1.3 mm.
+
+Refitted against all three points:
+
+```
+x = 6.77 + 28167/d          principal point (1159, 717)
+                            f = 5.26 mm, laser height offset 0.114 mm
+
+     d   measured   model   residual
+   182     162.46  161.54    −1.08 mm
+   132     218.79  220.16    +0.85 mm
+    84     342.54  342.10    −0.11 mm
+```
+
+Within ±1.1 mm across the range, and the parameters barely moved from the
+two-point solution. The residuals alternate in sign, which is the signature of a
+small systematic curvature — lens distortion, most likely — but at a millimetre
+it cannot be separated from the by-eye accuracy of the target heights.
+
+That is close to the brief's 0.3–0.5 mm target but not inside it, which is
+another reason the calibration table is measured rather than computed: it
+absorbs the curvature along with everything else.
 
 ### Two cheap guards
 
