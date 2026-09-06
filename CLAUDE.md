@@ -441,6 +441,63 @@ Consequences to build in from the start:
    an already-warm lamp showed only −0.3 % and led to the wrong conclusion that
    the LEDs barely heat at all.
 
+### ⚠️ A clear liquid surface returns nothing — the beam reads the bottom
+
+Measured 2026-09-06. The concern was that triangulation needs the surface to
+**scatter**, and that a liquid surface is largely specular. It is worse than
+that: with clear water there was no surface return at all.
+
+Reference, dry bottom at 182 mm: one spot, `r = 166.2 ± 0.11 px` at **21.9°**,
+peak 168. That calibrates `f·b = 30248 px·mm` for this installation.
+
+Then 28 mm of clear water over the same bottom:
+
+| | radius | angle | peak | movement | implies |
+|---|---|---|---|---|---|
+| outer | 171.3 px | **22.0°** | 44 | 0.06 px | 176.6 mm |
+| inner | 84.3 px | 29.4° | 10 | 0.59 px | — |
+
+The outer spot shares the laser's angle, so it is a direct return — but its
+radius corresponds to **the bottom seen through the water** (predicted 175.1 mm,
+measured 176.6, a 1.5 mm match). The surface would have sat at r = 196.4 px and
+there was nothing there.
+
+The inner spot is 7.5° off the laser's line, so it cannot be a direct return. It
+is the lid reflected in the water surface — dim, and mobile because the surface
+is a moving mirror.
+
+**The failure mode is the dangerous one.** The measurement does not fail; it
+succeeds with the wrong answer. A clear spot, on the correct angle, at a
+plausible radius, with a standard deviation of 0.06 px — among the steadiest
+readings taken. Nothing in the signal says it is the wrong surface.
+
+**An angular region of interest does not catch it.** Restricting the search to a
+band along the laser's radial line rejects the specular ghost, which is off
+angle. It cannot reject the bottom return, which is the same beam further away.
+
+### What that means for the vessel
+
+There is no bottom 28 mm down in an F80 — the liquid is half a metre deep, so
+the beam scatters in the **volume** instead. The return then comes from a
+penetration depth set by turbidity: cloudy wort returns near the surface, clear
+beer returns further down. The zero reading therefore carries a
+turbidity-dependent bias of some millimetres, and it differs between a cloudy
+ale wort and a clearer lager one. Krausen height is measured relative to that
+zero, so a constant bias cancels — but it is worth knowing it exists.
+
+During active fermentation the surface is foam, which scatters well, so this
+does not touch the main measurement. It touches the **zero reading at fill** and
+the **packing phase**, and at packing there is usually foam as well.
+
+### Two cheap guards
+
+- **Flag more than one spot.** A second return means the situation is not what
+  the model assumes.
+- **Flag a radius outside the plausible range.** In the vessel the bottom is
+  half a metre beyond any possible liquid surface, so a through-liquid reading
+  lands far outside and is caught — which it would not have been in this
+  28 mm test rig.
+
 ### Stream rate is chosen per viewer
 
 The live view serves two different jobs, and they want different rates:
