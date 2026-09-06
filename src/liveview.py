@@ -34,7 +34,7 @@ from illumination import Lamp
 log = logging.getLogger("liveview")
 
 MAIN_SIZE = (2304, 1296)
-LORES_SIZE = (768, 432)
+LORES_SIZE = (1024, 576)   # default, overridden by --lores
 
 # The sensor delivers 30 fps. Watching whether anything is happening at all
 # needs a small fraction of that; watching hops being drawn under by the
@@ -234,6 +234,7 @@ class Handler(server.BaseHTTPRequestHandler):
     controls: Controls
     stream_timeout: float
     default_fps: float
+    lores: tuple
 
     _viewers = 0
     _viewers_lock = threading.Lock()
@@ -299,8 +300,8 @@ class Handler(server.BaseHTTPRequestHandler):
         )
         body = (PAGE.replace("{buttons}", buttons)
                     .replace("{default_fps}", str(int(self.default_fps)))
-                    .replace("{w}", str(LORES_SIZE[0]))
-                    .replace("{h}", str(LORES_SIZE[1]))).encode()
+                    .replace("{w}", str(self.lores[0]))
+                    .replace("{h}", str(self.lores[1]))).encode()
         self._send_bytes(body, "text/html; charset=utf-8")
 
     def _send_stream(self, fps: float) -> None:
@@ -374,6 +375,11 @@ class Server(socketserver.ThreadingMixIn, server.HTTPServer):
     daemon_threads = True
 
 
+def lores_size(args) -> tuple[int, int]:
+    w, h = (int(v) for v in args.lores.lower().split("x"))
+    return (w, h)
+
+
 def build_camera(args):
     from picamera2 import Picamera2
     from picamera2.encoders import MJPEGEncoder
@@ -382,7 +388,7 @@ def build_camera(args):
     picam2 = Picamera2()
     config = picam2.create_video_configuration(
         main={"size": MAIN_SIZE},
-        lores={"size": LORES_SIZE, "format": "YUV420"},
+        lores={"size": lores_size(args), "format": "YUV420"},
     )
     picam2.configure(config)
 
@@ -427,7 +433,12 @@ def main() -> int:
     p.add_argument("--gain", type=float, default=1.0)
     p.add_argument("--red-gain", type=float, default=1.5)
     p.add_argument("--blue-gain", type=float, default=1.5)
-    p.add_argument("--bitrate", type=int, default=4_000_000)
+    p.add_argument("--bitrate", type=int, default=12_000_000)
+    p.add_argument("--lores", default="1024x576",
+                   help="size of the stream the web view encodes. Keep both "
+                        "dimensions multiples of 16: JPEG codes in 16x16 blocks, "
+                        "and 1152x648 -- exactly 16:9 but 648 is not -- produced "
+                        "a green artefact row along the bottom edge")
     p.add_argument("--max-frame-duration-us", type=int, default=41_000,
                    help="longest frame the auto exposure may choose. Defaults to "
                         "the top preset's period, so the camera can always "
@@ -460,10 +471,11 @@ def main() -> int:
     Handler.controls = Controls(lamp, laser)
     Handler.stream_timeout = args.stream_timeout
     Handler.default_fps = min(max(args.fps, 0.1), FPS_MAX)
+    Handler.lores = lores_size(args)
 
     httpd = Server(("", args.port), Handler)
     log.info("live view on http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",
-             args.port, *MAIN_SIZE, *LORES_SIZE)
+             args.port, *MAIN_SIZE, *lores_size(args))
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
