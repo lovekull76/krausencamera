@@ -250,17 +250,17 @@ class FocusTracker:
         if abs(want - self.lens_position) > self._threshold:
             self._picam2.set_controls({"AfMode": 0, "LensPosition": float(want)})
             log.info("range %.1f mm (dx=%.2f at %.2f dpt -> %.2f normalised, "
-                     "spread %.0f px) -> focus %.2f dpt, moved %+.2f",
+                     "dy=%.2f, spread %.0f px) -> focus %.2f dpt, moved %+.2f",
                      d, spot["dx"], self.lens_position,
                      normalise_dx(spot["dx"], self.lens_position),
-                     spot["spread"], want, want - self.lens_position)
+                     spot["dy"], spot["spread"], want, want - self.lens_position)
             self.lens_position = want
         else:
-            log.info("range %.1f mm (dx=%.2f at %.2f dpt -> %.2f normalised) -> "
-                     "focus %.2f dpt, within %.1f, holding",
+            log.info("range %.1f mm (dx=%.2f at %.2f dpt -> %.2f normalised, "
+                     "dy=%.2f) -> focus %.2f dpt, within %.1f, holding",
                      d, spot["dx"], self.lens_position,
                      normalise_dx(spot["dx"], self.lens_position),
-                     want, self._threshold)
+                     spot["dy"], want, self._threshold)
 
     def _run(self) -> None:
         while not self._stop.is_set():
