@@ -325,6 +325,53 @@ takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
 directions. Most of that is pipeline latency, not the actuator. The old
 `0.35 + 0.04/dioptre` sampled inside the transition.
 
+## New housing, 10.5 mm baseline (2026-09-07)
+
+Recalibrated after the rebuild. Distances are to the housing face; the fits
+solve for the offset to the optical reference themselves.
+
+| distance | focus | dx | dy |
+|---|---|---|---|
+| 180 mm | 5.45 dpt | 160.14 | 102.52 |
+| 130 mm | 7.70 dpt | 201.50 | 104.13 |
+| 108 mm | 9.55 dpt | 227.69 | 107.60 |
+| 80 mm | 13.78 dpt | 292.20 | 108.47 |
+
+```
+FOCUS   dpt = 0.440 + 801/(d − 19.95)     residuals ±0.27 mm
+LASER   dx  = 64.0  + 16782/(d − 6.38)    residuals −1.57 … +0.95 mm
+
+f·b = 16782 px·mm at b = 10.5  ->  f ≈ 1600 px
+laser height offset ≈ 0.3 mm
+```
+
+### The two models behave differently, and that is informative
+
+Both were measured at the same target positions, so they share the distances. If
+the heights were uncertain by a millimetre or two, **both** fits would show it.
+The focus fit lands within 0.27 mm, so the heights are good to about a third of
+a millimetre — and the laser model's 1.5 mm therefore cannot come from the rig.
+`dx` was measured to 0.03–0.05 px, so it is not noise either. The model form is
+slightly wrong, most likely lens distortion, since the dot travels 132 px of
+radius across the range.
+
+**So focus can be set from a formula and triangulation cannot.**
+`dpt = 0.440 + 801/(d − 19.95)` is good to a third of a millimetre across
+80–180 mm, which answers the autofocus-from-laser-distance question directly:
+no table needed there.
+
+Triangulation needs the measured table the brief prescribes. That is not
+caution — 1.5 mm against a 0.3–0.5 mm target is the measured cost of the
+analytic route.
+
+### Predictions made before measuring, and how they fared
+
+Fitted to three points, both models were tested against a fourth at 108 mm:
+focus predicted 9.51 and measured 9.55, an error of 0.4 %; the laser predicted
+dx = 231.4 and measured 227.69, which is 2.3 mm of distance. Three parameters
+against three points is an exact fit that validates nothing, which is why the
+fourth point exists.
+
 ## Focus sweep
 
 `src/focus_sweep.py` sweeps `LensPosition` and reports the sharpest setting from
