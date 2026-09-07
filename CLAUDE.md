@@ -360,9 +360,79 @@ radius across the range.
 80–180 mm, which answers the autofocus-from-laser-distance question directly:
 no table needed there.
 
-Triangulation needs the measured table the brief prescribes. That is not
-caution — 1.5 mm against a 0.3–0.5 mm target is the measured cost of the
-analytic route.
+> **Superseded, 2026-09-07.** The 1.5 mm was largely the target, not the model.
+> See the two sections below: the laser positions were measured against the
+> printed focus target, whose gratings bias the centroid, and the reading was
+> never corrected for the focus it was taken at. Both were measured; both were
+> worth about a pixel. The measured table is still the right call for
+> production, but not for the reason recorded here.
+
+### The patterned target biased the laser centroid
+
+Love asked whether it mattered that the laser positions were measured against
+the printed focus target rather than white paper. It did. Swapping to white
+paper at the same 108 mm, nothing else touched:
+
+| | dx | dy |
+|---|---|---|
+| pattern | 227.69 ± 0.03 | 107.60 |
+| white paper | 228.77 ± 0.05 | 109.97 |
+
+**1.08 px**, where the paper's own thickness accounts for 0.16. The dot spans
+about 40 px and the gratings run 0.5–2 mm, so it covers several bars; black
+absorbs, white returns, and the intensity-weighted centroid is pulled toward
+whichever side carries more white. Against the four-point model the residual at
+this position falls from −1.45 px to −0.37.
+
+The focus fit was unaffected because its metric is contrast over the whole ROI,
+which does not care *where* in the ROI the dot lands. That is why only one of
+the two models looked bad.
+
+**Operationally this does not go away.** Foam is not periodic like a grating,
+but it is uneven on the same scale, and one pixel is 0.6 mm of height here. The
+difference is that a grating gives a *systematic* error that varies with
+position while foam gives a *random* one that averages down — so it sets the
+noise floor, not a bias. That floor is well above the 47 µm measured on paper.
+
+### Focus and triangulation are coupled by focus breathing
+
+`laser_align.py` and `laser_spots.py` hardcode `LensPosition: 7.7`, so the whole
+four-point calibration was taken at **one fixed focus** — correct for about
+148 mm and nowhere else. Which is self-consistent, and fine, right up until
+autofocus starts moving the very variable the model assumed was nailed down.
+
+Measured at 108 mm with `breathing_probe.py`, sweeping the lens over 7.0–11.0
+dioptres and reading the dot at each:
+
+```
+  7.00 dpt   dx = 227.61      11.00 dpt   dx = 233.91
+  0.68 %/dioptre, repeatable to 0.04 px, linear across the range
+```
+
+The optical measurement of focus breathing made independently gave 0.72 %/dpt.
+Two different routes, the same number.
+
+Uncorrected, that is **3.8 mm of distance error across the focus range** — the
+lens moving turns into the target appearing to move. It also validates the
+1.08 px pattern result from the other direction: `laser_align` ran at 7.7 dpt,
+and interpolating the sweep to 7.7 gives 228.71 against its measured 228.77.
+
+The fix is not to range at a fixed focus — that would cost an extra lens move
+and 1.6 s of settling every cycle. Breathing is a change of *magnification*, so
+normalising `dx` back to the calibration focus is a multiplication:
+
+```python
+dx_ref = dx / (1 + 0.0068 * (lens_position - 7.7))
+```
+
+Across the same sweep that takes the spread from 2.83 mm to **0.06 mm**, and it
+lands on 108.25 mm against a nominal 108. The multiplicative form is physics
+rather than measurement — it is only verified at this one distance, and a
+second distance would settle it.
+
+Triangulation still wants the measured table the brief prescribes, but that is
+now a judgement about distortion over a 132 px sweep of radius, not the 1.5 mm
+recorded above.
 
 ### Predictions made before measuring, and how they fared
 

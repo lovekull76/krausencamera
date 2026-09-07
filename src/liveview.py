@@ -30,6 +30,7 @@ from http import server
 from urllib.parse import parse_qs, urlparse
 
 from illumination import Lamp
+from focus_tracker import FocusTracker
 
 log = logging.getLogger("liveview")
 
@@ -66,6 +67,7 @@ PAGE = """<!DOCTYPE html>
   .rates button.on { background: #ddd; color: #111; border-color: #ddd; }
   .hw button.on { background: #2e7d32; border-color: #2e7d32; color: #fff; }
   .hw button.laser.on { background: #c62828; border-color: #c62828; color: #fff; }
+  .focus { margin-left: 0.8em; opacity: 0.75; font-variant-numeric: tabular-nums; }
   .meta { opacity: .6; font-variant-numeric: tabular-nums; text-align: center; }
 </style>
 </head>
@@ -75,6 +77,7 @@ PAGE = """<!DOCTYPE html>
   <div class="row hw">
     <button id="led">IR</button>
     <button id="laser" class="laser">Laser</button>
+    <span id="focus" class="focus"></span>
   </div>
   <div class="meta"></div>
 <script>
@@ -84,6 +87,7 @@ PAGE = """<!DOCTYPE html>
   const rateButtons = [...document.querySelectorAll(".rates button")];
   const led = document.getElementById("led");
   const laser = document.getElementById("laser");
+  const focus = document.getElementById("focus");
 
   let currentFps = 0;
   function setFps(n) {
@@ -111,6 +115,12 @@ PAGE = """<!DOCTYPE html>
     laser.classList.toggle("on", st.laser);
     led.textContent = st.led ? "IR on" : "IR forced off";
     laser.textContent = st.laser ? "LASER ON" : "Laser off";
+    if (st.focus) {
+      const f = st.focus;
+      focus.textContent = f.distance_mm === null ? "ranging\u2026"
+        : f.distance_mm + " mm \u00b7 " + f.lens_position.toFixed(2)
+          + " dpt \u00b7 " + f.age_s + " s ago";
+    }
   }
   async function toggle(path, want) {
     const r = await fetch(path + "?on=" + (want ? 1 : 0), { method: "POST" });
@@ -234,6 +244,7 @@ class Handler(server.BaseHTTPRequestHandler):
     broker: FrameBroker
     lamp: Lamp
     controls: Controls
+    tracker = None
     stream_timeout: float
     default_fps: float
     lores: tuple
@@ -251,7 +262,7 @@ class Handler(server.BaseHTTPRequestHandler):
         elif parsed.path == "/stream.mjpg":
             self._send_stream(self._wanted_fps(parsed.query))
         elif parsed.path == "/api/state":
-            self._send_json(self.controls.state())
+            self._send_json(self._state())
         elif parsed.path == "/healthz":
             self._send_bytes(b"ok\n", "text/plain")
         else:
@@ -271,7 +282,13 @@ class Handler(server.BaseHTTPRequestHandler):
         else:
             self.send_error(404)
             return
-        self._send_json(self.controls.state())
+        self._send_json(self._state())
+
+    def _state(self) -> dict:
+        st = self.controls.state()
+        if self.tracker is not None:
+            st["focus"] = self.tracker.state()
+        return st
 
     def _send_json(self, obj: dict) -> None:
         import json
@@ -389,7 +406,10 @@ def build_camera(args):
 
     picam2 = Picamera2()
     config = picam2.create_video_configuration(
-        main={"size": MAIN_SIZE},
+        # YUV420, not the default XBGR: the laser model was fitted on the Y
+        # plane, and Y weights the channels 0.299/0.587/0.114 where an equal
+        # average does not -- a different centroid for the same dot.
+        main={"size": MAIN_SIZE, "format": "YUV420"},
         lores={"size": lores_size(args), "format": "YUV420"},
     )
     picam2.configure(config)
@@ -416,11 +436,19 @@ def build_camera(args):
         )
     picam2.set_controls(controls)
 
+    # What the focus tracker has to restore after each ranging cycle.
+    restore = ({"AeEnable": True,
+                "FrameDurationLimits": (33333, args.max_frame_duration_us)}
+               if args.auto else
+               {k: controls[k] for k in
+                ("FrameDurationLimits", "AeEnable", "ExposureTime",
+                 "AnalogueGain", "AwbEnable", "ColourGains")})
+
     broker = FrameBroker()
     picam2.start_recording(
         MJPEGEncoder(bitrate=args.bitrate), FileOutput(broker), name="lores"
     )
-    return picam2, broker
+    return picam2, broker, restore
 
 
 def main() -> int:
@@ -455,6 +483,15 @@ def main() -> int:
     p.add_argument("--stream-timeout", type=float, default=10.0,
                    help="drop a viewer that has not accepted data for this many "
                         "seconds, so a backgrounded tab cannot hold the lamp on")
+    p.add_argument("--autofocus", action="store_true",
+                   help="range with the laser and hold the focus there")
+    p.add_argument("--af-interval", type=float, default=60.0,
+                   help="seconds between laser ranging cycles (default 60)")
+    p.add_argument("--af-exposure-us", type=int, default=8000,
+                   help="exposure for the laser frame; the dot saturates above this")
+    p.add_argument("--af-threshold", type=float, default=1.2,
+                   help="dioptres of drift before the lens is moved (default 1.2, "
+                        "about half the measured depth of field)")
     p.add_argument("--auto", action="store_true",
                    help="unlock exposure/white balance -- for aiming only")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -467,13 +504,26 @@ def main() -> int:
 
     lamp = Lamp("IR illumination", args.led_pin)
     laser = Lamp("laser", args.laser_pin, settle_s=0.1)
-    picam2, broker = build_camera(args)
+    picam2, broker, restore = build_camera(args)
     Handler.broker = broker
     Handler.lamp = lamp
     Handler.controls = Controls(lamp, laser)
     Handler.stream_timeout = args.stream_timeout
     Handler.default_fps = min(max(args.fps, 0.1), FPS_MAX)
     Handler.lores = lores_size(args)
+
+    tracker = None
+    if args.autofocus:
+        tracker = FocusTracker(
+            picam2, lamp, laser, size=MAIN_SIZE,
+            interval_s=args.af_interval, laser_exposure_us=args.af_exposure_us,
+            threshold_dpt=args.af_threshold, restore_controls=restore,
+            initial_lens=args.lens_position,
+        )
+        Handler.tracker = tracker
+        tracker.start()
+        log.info("autofocus on: ranging every %.0f s, moving past %.1f dpt",
+                 args.af_interval, args.af_threshold)
 
     httpd = Server(("", args.port), Handler)
     log.info("live view on http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",
@@ -484,6 +534,8 @@ def main() -> int:
         log.info("shutting down")
     finally:
         httpd.shutdown()
+        if tracker:
+            tracker.stop()
         picam2.stop_recording()
         laser.shutdown()
         lamp.shutdown()
