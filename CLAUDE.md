@@ -641,6 +641,35 @@ So the constraint on viewer adjustments stands: the live view may be tuned to
 taste, and the measurement cycle sets its own known state before capturing.
 Same discipline as `FocusTracker`, for a different reason than first recorded.
 
+### dy is drifting, and the night should say why
+
+`dy` should be constant — the laser sits in the camera's plane by construction,
+and the measured variation with distance is only 0.06 px/mm. Over one evening it
+went 110 -> 118 px while the distance read 108.3 -> 100.7 mm. The distance change
+accounts for about 0.4 px of that, so the rest is real geometry moving.
+
+At 16 px/mm image scale, 8 px is about 0.5 mm of lateral movement at the target,
+or 5 mrad — **0.3 degrees**. A single angular drift of that size, with components
+in both axes, explains the dx change as well, so it need not be two faults.
+
+Candidates eliminated by measurement or by Love:
+
+- **the tube's mouth** — not in the geometry at all. The measurement is the dot
+  against the image, which is exactly why that pairing was chosen.
+- **the target moving** — would show in dx, and could only move dy through the
+  0.06 px/mm distance term. Nowhere near enough.
+- **LED heating the housing** — the lamp ran at 21.6 % duty, not the hours
+  assumed, and it is mounted in the stainless lid with little thermal contact
+  with the camera body.
+- **the Pi's own heat** — the Pi is outside the housing.
+
+Leaving Love's hypothesis, which fits best: **the camera board is screwed down
+in the new housing and was not in the old one**, so this is preload relaxing.
+That predicts an asymptote rather than a wander, and it should not come back.
+
+Running overnight with no viewer, so the lamp stays off and the thermal
+environment is as constant as it gets. `dy` is logged every 60 s.
+
 ### Auto exposure for the live view, locked for the archive
 
 These are different jobs and they were conflated in one flag. The live view is
