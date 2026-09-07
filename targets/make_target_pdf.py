@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Write the focus target as a PDF, in points, at exact scale.
+"""Write the focus targets as a PDF, in points, at exact scale.
+
+Two pages. Page 1 is the original strip of gratings with a decade scale, for
+focus sweeps and for measuring the image scale. Page 2 is for recalibration,
+where focus and triangulation have to be measured against the *same* sheet:
+focus needs contrast, the laser centroid needs a uniform surface, and a grating
+under the dot was measured to shift it 1.08 px. So page 2 is a grating field
+with a blank disc in the middle for the dot to land in. The sweep runs with the
+laser off, so the blank disc contributes no gradient either way -- it lowers the
+sharpness metric slightly and does not move its peak.
 
 PDF rather than SVG because browsers commonly rescale SVG when printing, and
 the whole value of the target is that a printed millimetre is a millimetre. A
@@ -15,6 +24,14 @@ LENGTH = 240.0
 X0 = (PAGE_W_MM - LENGTH) / 2.0
 BANDS = [(2.0, 12.0), (1.0, 12.0), (0.5, 12.0)]
 GAP, TICK_H, LABEL = 2.0, 6.0, 9.0
+
+# Page 2. The disc has to hold the dot at every working distance. The beam is
+# near enough parallel to the axis that the dot sits about 10.5 mm to one side
+# whatever the distance -- that is what triangulation trades on -- so 22 mm of
+# radius leaves better than 10 mm of margin for mounting error on either side,
+# and does not care which side the laser ends up on.
+FIELD_W, FIELD_H, FIELD_PERIOD = 200.0, 150.0, 1.0
+DISC_R = 22.0
 
 
 def main(path="targets/focus-target-A4.pdf"):
@@ -50,14 +67,48 @@ def main(path="targets/focus-target-A4.pdf"):
     text(X0 + 100.0, yv - 4.0,
          "200.0 mm - measure before use. Print at 100 %, no fit to page.", 9.0)
 
-    stream = "\n".join(ops).encode("latin-1")
+    page1 = "\n".join(ops).encode("latin-1")
+
+    # --- page 2: grating field with a blank landing disc ------------------
+    ops = ["0 0 0 rg"]
+    fx, fy = (PAGE_W_MM - FIELD_W) / 2.0, 26.0
+    cx, cy = fx + FIELD_W / 2.0, fy + FIELD_H / 2.0
+    n = int(FIELD_W / FIELD_PERIOD)
+    for i in range(n):
+        x = fx + i * FIELD_PERIOD
+        w = FIELD_PERIOD / 2.0
+        # A bar that misses the disc is one rectangle. One that crosses it is
+        # two, split at the chord -- exact, and it keeps the file small enough
+        # to print without a fight. Sampling the circle instead took 57000
+        # operations and 2 MB.
+        off = abs(x + w / 2.0 - cx)
+        if off >= DISC_R:
+            rect(x, fy, w, FIELD_H)
+            continue
+        half = (DISC_R ** 2 - off ** 2) ** 0.5
+        rect(x, fy, w, (cy - half) - fy)
+        rect(x, cy + half, w, (fy + FIELD_H) - (cy + half))
+    for dx_, dy_ in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+        rect(cx + dx_ * (DISC_R + 3.0) - 0.4, cy + dy_ * (DISC_R + 3.0) - 0.4, 0.8, 0.8)
+    text(cx, fy - 6.0,
+         f"Recalibration target - land the laser dot inside the {2*DISC_R:.0f} mm "
+         f"blank disc. Print at 100 %, no fit to page.", 9.0)
+    page2 = "\n".join(ops).encode("latin-1")
+
+    def page(contents_obj):
+        return (f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
+                f"{PAGE_W_MM*MM:.2f} {PAGE_H_MM*MM:.2f}] /Resources << /Font "
+                f"<< /F1 7 0 R >> >> /Contents {contents_obj} 0 R >>").encode()
+
+    def content(stream):
+        return (b"<< /Length " + str(len(stream)).encode()
+                + b" >>\nstream\n" + stream + b"\nendstream")
+
     objs = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        (f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
-         f"{PAGE_W_MM*MM:.2f} {PAGE_H_MM*MM:.2f}] /Resources << /Font "
-         f"<< /F1 5 0 R >> >> /Contents 4 0 R >>").encode(),
-        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
+        b"<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>",
+        page(4), content(page1),
+        page(6), content(page2),
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
     out = bytearray(b"%PDF-1.4\n")

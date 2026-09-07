@@ -476,6 +476,39 @@ from the laser model separately: if they agree, the pair is intact and only the
 mounting depth shifted. If they disagree, the geometry between camera and laser
 really changed and the full series is required.
 
+`src/recalibrate.py` does exactly that from one measured distance, and
+`--append` / `--fit` accumulate and refit the full series when the verdict says
+the pair itself moved. The fitter is nonlinear only in the offset, so it scans
+that and solves the other two parameters linearly — no dependency beyond numpy.
+Against the four points above it returns `0.446 + 799.5/(d − 20.05)` and
+`64.04 + 16775/(d − 6.40)`, reproducing the constants recorded here.
+
+### One target for both measurements
+
+Focus wants contrast and the laser centroid wants a uniform surface, which
+looks like it forces swapping the sheet at every position. It does not: the
+sweep runs with the laser off, so a blank patch contributes no gradient either
+way — it lowers the metric slightly and cannot move its peak.
+
+Page 2 of `targets/focus-target-A4.pdf` is therefore a 1 mm grating field with a
+44 mm blank disc in the middle. The beam is near enough parallel to the axis
+that the dot lands about 10.5 mm off it whatever the distance, so 22 mm of
+radius leaves better than 10 mm of margin, and does not care which side the
+laser is on.
+
+### Metrics agreeing is not evidence the target has contrast
+
+Smoke-testing the tool against blank white paper produced a peak at 9.30 dpt
+with the Laplacian and the gradient agreeing exactly — and the whole curve
+spanning 5.1 to 6.1, a ratio of 1.2 where a real target gives 14. Both metrics
+are computed from the same flat frames, so they agree *because* there is nothing
+there. The existing disagreement check cannot see this, and neither can the
+darkness check: the scene was well lit.
+
+The guard that works is the sweep's own dynamic range. `recalibrate.py` now
+aborts below 3x peak-to-floor. **`focus_sweep.py` still has the same blind
+spot.**
+
 ### Predictions made before measuring, and how they fared
 
 Fitted to three points, both models were tested against a fourth at 108 mm:
