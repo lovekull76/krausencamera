@@ -641,6 +641,34 @@ So the constraint on viewer adjustments stands: the live view may be tuned to
 taste, and the measurement cycle sets its own known state before capturing.
 Same discipline as `FocusTracker`, for a different reason than first recorded.
 
+### Auto exposure for the live view, locked for the archive
+
+These are different jobs and they were conflated in one flag. The live view is
+watched by a human across a scene that spans about 2.3x from an empty tank to
+high krausen, so it wants auto exposure. Frame A is archived and wants a locked
+one — not because anything is measured from it, but because a timelapse shot
+with auto exposure pumps, and because a fermentation cannot be re-shot to
+recover the option later.
+
+So `liveview.py` now runs AEC by default; `--exposure-us N` locks it when you
+want that, and the measurement cycle sets its own state before capturing
+either frame regardless.
+
+**White balance stays locked either way.** Under 850 nm the channels sit within
+6 % of each other, so AWB has nothing real to correct and would only chase
+noise. The old `--auto` unlocked both at once and is now `--auto-wb`, which is
+useful only for aiming in visible light.
+
+The chosen exposure and gain are on the page, because otherwise there is no way
+to tell AEC from a locked value without changing the scene and squinting.
+Measured on the bench: 15.8 ms at gain 1.12 with the lamp lit, opening to
+40.3 ms at gain 15.5 when the ranging cycle takes the lamp away.
+
+> **Known wart:** that swing happens once a cycle, so a viewer sees a bright
+> noisy moment while AEC re-converges after each ranging. The `ranging...`
+> label explains it, but damping it would mean holding the last good frame for
+> the few seconds the lamp is off.
+
 ### Choosing the locked exposure
 
 Against the brightest scene it will ever see, not the one in front of you. The

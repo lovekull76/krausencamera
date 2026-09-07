@@ -14,7 +14,9 @@ video configuration carries two streams out of the same sensor mode:
 Exposure, white balance and focus are locked. This is not cosmetic: the
 automatics would otherwise compensate away exactly the brightness change that
 is to be measured as the krausen builds, leaving the time series useless for
-automated analysis. Use --auto when aiming the housing, never when measuring.
+automated analysis. Exposure is automatic here; the measurement cycle sets
+its own locked state before it captures. --auto-wb additionally unlocks the
+white balance, which is only useful when aiming in visible light.
 """
 
 from __future__ import annotations
@@ -78,6 +80,7 @@ PAGE = """<!DOCTYPE html>
     <button id="led">IR</button>
     <button id="laser" class="laser">Laser</button>
     <span id="focus" class="focus"></span>
+    <span id="exp" class="focus"></span>
   </div>
   <div class="meta"></div>
 <script>
@@ -88,6 +91,7 @@ PAGE = """<!DOCTYPE html>
   const led = document.getElementById("led");
   const laser = document.getElementById("laser");
   const focus = document.getElementById("focus");
+  const exp = document.getElementById("exp");
 
   let currentFps = 0;
   function setFps(n) {
@@ -106,11 +110,17 @@ PAGE = """<!DOCTYPE html>
     // reads as information.
     meta.textContent = "{w}\u00d7{h} \u00b7 " + n + " fps \u00b7 "
       + "IR illumination follows the viewer count unless overridden below";
+    lastFps = n;
     try { localStorage.setItem("fps", n); } catch (e) {}
   }
   rateButtons.forEach(b => b.onclick = () => setFps(+b.dataset.fps));
 
+  let lastFps = 0;
   function paint(st) {
+    if (st.exposure_us) {
+      exp.textContent = (st.exposure_us / 1000).toFixed(1) + " ms"
+        + (st.gain > 1.05 ? " \u00b7 gain " + st.gain.toFixed(1) : "");
+    }
     led.classList.toggle("on", st.led);
     laser.classList.toggle("on", st.laser);
     led.textContent = st.led ? "IR on" : "IR forced off";
@@ -255,6 +265,7 @@ class Handler(server.BaseHTTPRequestHandler):
     lamp: Lamp
     controls: Controls
     tracker = None
+    picam2 = None
     stream_timeout: float
     default_fps: float
     lores: tuple
@@ -296,6 +307,15 @@ class Handler(server.BaseHTTPRequestHandler):
 
     def _state(self) -> dict:
         st = self.controls.state()
+        # What the auto exposure actually settled on. Without this the only way
+        # to tell AEC from a locked exposure is to change the scene and squint.
+        if self.picam2 is not None:
+            try:
+                md = self.picam2.capture_metadata()
+                st["exposure_us"] = md.get("ExposureTime")
+                st["gain"] = round(md.get("AnalogueGain", 0.0), 2)
+            except Exception:
+                pass
         if self.tracker is not None:
             st["focus"] = self.tracker.state()
         return st
@@ -421,35 +441,40 @@ def build_camera(args):
     )
     picam2.configure(config)
 
-    controls = {"AfMode": 0, "LensPosition": args.lens_position}
-    if args.auto:
-        # Give the auto exposure room to go past 33 ms. Frame duration bounds
-        # exposure, so leaving it at the default caps AEC exactly where a
-        # stopped-down lens starts needing more light. The frame rate drops on
-        # its own when a long exposure is actually chosen.
-        # Bounded by the top preset's period rather than left open: given room,
-        # the auto exposure spends it on exposure time and the rate collapses.
-        # Measured with a 100 ms ceiling, a request for 24 fps delivered 15.2.
-        controls["FrameDurationLimits"] = (33333, args.max_frame_duration_us)
-        log.warning("--auto: exposure and white balance UNLOCKED. Aiming only.")
+    # Auto exposure is the default for the live view. The scene spans about
+    # 2.3x from an empty tank to high krausen, so no single locked value looks
+    # right at both ends, and nothing is measured from what a viewer sees --
+    # frame A is archived, not measured, and the cycle sets its own state
+    # before capturing it. White balance stays locked regardless: under 850 nm
+    # the channels sit within 6 % of each other, so AWB has nothing real to
+    # correct and would only chase noise.
+    controls = {"AfMode": 0, "LensPosition": args.lens_position,
+                "AwbEnable": bool(args.auto_wb)}
+    if not args.auto_wb:
+        controls["ColourGains"] = (args.red_gain, args.blue_gain)
+
+    if args.exposure_us:
+        controls.update(FrameDurationLimits=frame_duration_for(args.exposure_us),
+                        AeEnable=False, ExposureTime=args.exposure_us,
+                        AnalogueGain=args.gain)
+        log.info("exposure locked at %d us", args.exposure_us)
     else:
-        controls.update(
-            FrameDurationLimits=frame_duration_for(args.exposure_us),
-            AeEnable=False,
-            ExposureTime=args.exposure_us,
-            AnalogueGain=args.gain,
-            AwbEnable=False,
-            ColourGains=(args.red_gain, args.blue_gain),
-        )
+        # Bounded rather than left open: given room, the auto exposure spends it
+        # on exposure time and the frame rate collapses. Measured with a 100 ms
+        # ceiling, a request for 24 fps delivered 15.2.
+        controls["AeEnable"] = True
+        controls["FrameDurationLimits"] = (33333, args.max_frame_duration_us)
+    if args.auto_wb:
+        log.warning("--auto-wb: white balance UNLOCKED. Aiming in visible light only.")
+
     picam2.set_controls(controls)
 
     # What the focus tracker has to restore after each ranging cycle.
-    restore = ({"AeEnable": True,
-                "FrameDurationLimits": (33333, args.max_frame_duration_us)}
-               if args.auto else
-               {k: controls[k] for k in
-                ("FrameDurationLimits", "AeEnable", "ExposureTime",
-                 "AnalogueGain", "AwbEnable", "ColourGains")})
+    restore = {k: controls[k] for k in
+               ("FrameDurationLimits", "AeEnable", "AwbEnable") if k in controls}
+    for k in ("ExposureTime", "AnalogueGain", "ColourGains"):
+        if k in controls:
+            restore[k] = controls[k]
 
     broker = FrameBroker()
     picam2.start_recording(
@@ -465,8 +490,10 @@ def main() -> int:
     p.add_argument("--lens-position", type=float, default=7.1,
                    help="dioptres (1/distance in metres); 7.1 ~ 140 mm. "
                         "Calibrate with a focus sweep.")
-    p.add_argument("--exposure-us", type=int, default=60000,
-                   help="exposure time in microseconds; nothing moves, so time is free")
+    p.add_argument("--exposure-us", type=int, default=0,
+                   help="lock the exposure at this many microseconds; "
+                        "0 (the default) runs auto exposure. Nothing moves, "
+                        "so time is free when you do lock it.")
     p.add_argument("--gain", type=float, default=1.0)
     # Measured under the 850 nm lamp: at (1.0, 1.0) the channels come out
     # R=190.7 G=179.2 B=178.1, so the scene is very nearly neutral already
@@ -503,7 +530,7 @@ def main() -> int:
     p.add_argument("--af-threshold", type=float, default=1.2,
                    help="dioptres of drift before the lens is moved (default 1.2, "
                         "about half the measured depth of field)")
-    p.add_argument("--auto", action="store_true",
+    p.add_argument("--auto-wb", action="store_true",
                    help="unlock exposure/white balance -- for aiming only")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
@@ -518,6 +545,7 @@ def main() -> int:
     picam2, broker, restore = build_camera(args)
     Handler.broker = broker
     Handler.lamp = lamp
+    Handler.picam2 = picam2
     Handler.controls = Controls(lamp, laser)
     Handler.stream_timeout = args.stream_timeout
     Handler.default_fps = min(max(args.fps, 0.1), FPS_MAX)
