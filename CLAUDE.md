@@ -641,6 +641,41 @@ So the constraint on viewer adjustments stands: the live view may be tuned to
 taste, and the measurement cycle sets its own known state before capturing.
 Same discipline as `FocusTracker`, for a different reason than first recorded.
 
+### Choosing the locked exposure
+
+Against the brightest scene it will ever see, not the one in front of you. The
+scene brightens about 130 % as the krausen rises toward the lamp, so an exposure
+set at rest level clips at high krausen -- and a clipped frame cannot be
+un-clipped, while a dark one can be stretched.
+
+`src/exposure_probe.py` sweeps exposure and reports the percentiles. Measured
+2026-09-07 against white paper at 104 mm, which is conservative twice over:
+brighter than foam, and closer than high krausen is expected to come.
+
+| exp | mean | p99.9 | clipped |
+|---|---|---|---|
+| 8 ms | 67.6 | 132 | 0 % |
+| 25 ms | 145.9 | 225 | 0 % |
+| 37 ms | 177.6 | 247 | 0.002 % |
+| 50 ms | 200.4 | 255 | **8.2 %** |
+| 75 ms | 225.0 | 255 | 25.6 % |
+
+**25 ms** is the longest exposure that keeps the 99.9th percentile under 230.
+Extrapolating to rest level by the inverse square gives (104/150)² = 0.48, so a
+mean near 70 there — well clear of the noise, and the far end is not the
+constraint.
+
+Two notes on the criterion. It is the 99.9th percentile rather than the maximum
+because foam glints: bursting bubbles will always clip a few pixels, and chasing
+zero would force a needlessly dark image. And it reads the **max across R, G
+and B**, since whichever channel clips first is the one that matters.
+
+> **The live view's 60 ms default is clipping about 15 % on this scene.** It was
+> chosen for a working distance the rebuild has since halved. Which is the
+> argument for making the live exposure adjustable rather than picking a new
+> constant: the same 2.3x spread that forces frame A to be set for the bright
+> end leaves a single live exposure wrong at one end or the other.
+
 ### The IR lamp lights when someone connects
 
 Consequences to build in from the start:
