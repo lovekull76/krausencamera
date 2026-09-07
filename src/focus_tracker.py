@@ -114,6 +114,10 @@ class FocusTracker:
         self.last_dy: float | None = None
         self.spread_px: float | None = None
         self.updated_at: float | None = None
+        # The live view goes dark for a few seconds every cycle -- the lamp
+        # is forced off and the exposure drops to 8 ms. Without a flag the
+        # page has no way to say why, and it reads as a fault.
+        self.busy = False
 
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -138,6 +142,7 @@ class FocusTracker:
             "peak": self.last_peak,
             "spread_px": self.spread_px,
             "age_s": None if self.updated_at is None else round(time.time() - self.updated_at),
+            "busy": self.busy,
         }
 
     # -- measurement -------------------------------------------------------
@@ -189,6 +194,13 @@ class FocusTracker:
     def measure(self):
         """One ranging cycle. Returns the spot dict, or None."""
         picam2 = self._picam2
+        self.busy = True
+        try:
+            return self._measure(picam2)
+        finally:
+            self.busy = False
+
+    def _measure(self, picam2):
         # Frame B's conditions: illumination held off so the dot is alone, and
         # an exposure sixty times shorter than frame A's -- the dot saturated
         # from 12 ms down to 800 us when it was measured.

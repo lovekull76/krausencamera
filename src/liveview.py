@@ -117,9 +117,12 @@ PAGE = """<!DOCTYPE html>
     laser.textContent = st.laser ? "LASER ON" : "Laser off";
     if (st.focus) {
       const f = st.focus;
-      focus.textContent = f.distance_mm === null ? "ranging\u2026"
-        : f.distance_mm + " mm \u00b7 " + f.lens_position.toFixed(2)
-          + " dpt \u00b7 " + f.age_s + " s ago";
+      // "busy" is why the picture just went black: the lamp is off and the
+      // exposure is down at 8 ms for the laser frame.
+      focus.textContent = f.busy ? "ranging\u2026 (lamp off for the laser frame)"
+        : f.distance_mm === null ? "no range yet"
+        : f.distance_mm + " mm \u00b7 focus " + f.lens_position.toFixed(2)
+          + " dpt \u00b7 ranged " + f.age_s + " s ago";
     }
   }
   async function toggle(path, want) {
@@ -128,7 +131,14 @@ PAGE = """<!DOCTYPE html>
   }
   led.onclick = () => toggle("/api/led", led.textContent !== "IR on");
   laser.onclick = () => toggle("/api/laser", laser.textContent !== "LASER ON");
-  fetch("/api/state").then(r => r.json()).then(paint);
+  // Poll rather than fetch once: the reading has an age, and an age that never
+  // changes is worse than none -- it looks like a live number and is not.
+  function refresh() {
+    if (document.hidden) return;
+    fetch("/api/state").then(r => r.json()).then(paint).catch(() => {});
+  }
+  refresh();
+  setInterval(refresh, 2000);
 
   // Close the stream deterministically on navigation, so the viewer count
   // reaches zero and the manual overrides -- the laser above all -- are reset.
