@@ -434,6 +434,48 @@ Triangulation still wants the measured table the brief prescribes, but that is
 now a judgement about distortion over a 132 px sweep of radius, not the 1.5 mm
 recorded above.
 
+### What the centroid does *not* depend on
+
+Three things were suspected of moving it and measured instead. All three are
+worth less than a fifth of a pixel, which is a useful licence to stop worrying
+about them:
+
+| | dx spread |
+|---|---|
+| pixel format: Y plane vs XBGR, Rec.601 weights vs an equal average | 0.03 px |
+| colour gains (1.0, 1.0) against (1.5, 1.5) | 0.10 px |
+| exposure 500–8000 µs, 0.3 % to 34 % of the blob clipped flat | 0.18 px |
+
+At 850 nm all three Bayer filters pass about equally, so the channel weighting
+has almost nothing to weight differently. And the dot is symmetric enough that
+flattening a third of it against the ceiling does not pull the centroid — which
+means **the ranging frame's exposure is not critical**, a good property to have
+when the surface's reflectivity is about to become the unknown.
+
+So of everything that changed between two sessions, only the lens position
+mattered. A 4.2 px shift that survived all of the above turned out to be the rig
+itself moving 2.5 mm between runs.
+
+### Recalibrating after a rebuild costs one point, not four
+
+If the camera and laser are remounted as a rigid pair — same baseline, same
+angle — but the pair sits differently in the housing, then only the offset from
+the housing face to the optical reference changes. Both models carry that offset
+as an additive constant:
+
+```
+dx  = X_PP + K/(d + C)          C  -> C  − δ
+dpt = F_OFF + F_K/(d + F_C)     F_C -> F_C − δ
+```
+
+Same δ in both. So **one measurement against a known distance recovers it**, and
+the four-position series is only needed if `K` or `X_PP` moved too.
+
+That also gives a free check on which happened. Solve δ from the focus model and
+from the laser model separately: if they agree, the pair is intact and only the
+mounting depth shifted. If they disagree, the geometry between camera and laser
+really changed and the full series is required.
+
 ### Predictions made before measuring, and how they fared
 
 Fitted to three points, both models were tested against a fourth at 108 mm:

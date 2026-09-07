@@ -406,10 +406,7 @@ def build_camera(args):
 
     picam2 = Picamera2()
     config = picam2.create_video_configuration(
-        # YUV420, not the default XBGR: the laser model was fitted on the Y
-        # plane, and Y weights the channels 0.299/0.587/0.114 where an equal
-        # average does not -- a different centroid for the same dot.
-        main={"size": MAIN_SIZE, "format": "YUV420"},
+        main={"size": MAIN_SIZE},
         lores={"size": lores_size(args), "format": "YUV420"},
     )
     picam2.configure(config)
