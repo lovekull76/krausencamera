@@ -608,6 +608,39 @@ Departs from the brief on one point: **no MJPEG camera in HASS.**
 
 HASS is not in the image path at all — only the data path.
 
+### Scope: height is the only measurement (settled 2026-09-07)
+
+The brief is ambiguous here and it is worth resolving explicitly, because it
+decides how much machinery the capture path needs. It describes frame A as
+giving "krausen structure and relief", but justifies locking the exposure by
+saying the automatics would "compensate away exactly the brightness change that
+is to be measured as the krausen builds".
+
+**Only one number is measured: height, from frame B's laser dot.** Frame A is an
+image, archived for a timelapse and for whatever a human wants to look at later.
+Nothing is computed from it.
+
+| | | |
+|---|---|---|
+| **measured** | height, mm | frame B, every cycle, to MQTT |
+| **archived** | frame A stills | variable interval, to the NAS |
+| **on demand** | H.264, minutes at a time | dry hop, from the lores stream |
+
+What this removes: the **fixed warm-up from a known state** before frame A. That
+protocol existed to keep the −2.83 % LED droop out of a photometric time series.
+With no photometry there is no series to protect, `was_lit_for` becomes purely
+diagnostic, and the cycle does not have to wait for the lamp.
+
+What it does *not* remove: **locking the exposure**. That survives on two
+grounds that have nothing to do with measuring. A timelapse shot with auto
+exposure pumps and flickers, which is unwatchable at speed. And a fermentation
+cannot be re-shot — locking now keeps the option of analysing the archive later,
+while leaving it automatic forecloses it permanently.
+
+So the constraint on viewer adjustments stands: the live view may be tuned to
+taste, and the measurement cycle sets its own known state before capturing.
+Same discipline as `FocusTracker`, for a different reason than first recorded.
+
 ### The IR lamp lights when someone connects
 
 Consequences to build in from the start:

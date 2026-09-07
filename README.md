@@ -20,7 +20,7 @@ Nothing enters the tube. Two frames per measurement cycle:
 
 | Frame | Illumination | Laser | Yields |
 |---|---|---|---|
-| **A** | on | off | krausen structure and relief |
+| **A** | on | off | krausen structure and relief — archived, not measured |
 | **B** | off | on | laser dot in a near-black image, making the centroid trivial |
 
 A red laser mounted 15.5 mm from the camera axis and parallel to it gives the
