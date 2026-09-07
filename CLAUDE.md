@@ -505,9 +505,35 @@ are computed from the same flat frames, so they agree *because* there is nothing
 there. The existing disagreement check cannot see this, and neither can the
 darkness check: the scene was well lit.
 
-The guard that works is the sweep's own dynamic range. `recalibrate.py` now
-aborts below 3x peak-to-floor. **`focus_sweep.py` still has the same blind
-spot.**
+The guard that works is the sweep's own dynamic range. Both `recalibrate.py`
+and `focus_sweep.py` now report it, and `recalibrate.py` aborts below 3x.
+
+### The search window needed both axes
+
+`|dx| ∈ (100, 450)` keeps the tube edge out — it is the brightest thing in the
+frame, sits at dx = 871, and once captured `laser_align` completely. But there
+was never anything in `y`, so a bright enough reflection directly above or below
+the dot would have won on brightness alone.
+
+Measured `dy` runs 102–115 px over 80–180 mm, which is small enough to confirm
+the beam really is in the camera's plane. The window is now 110 ± 45 px, and the
+tracker warns while there is still a quarter of the margin left — a window that
+silently clips is worse than none, because the reading just stops with no clue
+why.
+
+### The live view was magenta because the gains were a visible-light guess
+
+`ColourGains` shipped at (1.5, 1.5). Under the 850 nm lamp that gives
+R=225 G=148 B=222 — the two boosted channels up, green down, which is exactly
+magenta. At (1.0, 1.0) the same scene reads R=190.7 G=179.2 B=178.1, so an IR
+scene is very nearly neutral to begin with and wants almost no correction at
+all. The defaults are now the measured (0.94, 1.01); the delivered stream reads
+(R+B)/2G = 1.009 against 1.5 before.
+
+Worth separating from a nearby fact: the *main* stream's pixel format has
+nothing to do with this. The live view encodes the lores stream, so changing
+main between XBGR and YUV420 cannot alter what a viewer sees — a coincidence of
+timing made it look as though it had.
 
 ### Predictions made before measuring, and how they fared
 

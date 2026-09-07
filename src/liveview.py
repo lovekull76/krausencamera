@@ -458,8 +458,12 @@ def main() -> int:
     p.add_argument("--exposure-us", type=int, default=60000,
                    help="exposure time in microseconds; nothing moves, so time is free")
     p.add_argument("--gain", type=float, default=1.0)
-    p.add_argument("--red-gain", type=float, default=1.5)
-    p.add_argument("--blue-gain", type=float, default=1.5)
+    # Measured under the 850 nm lamp: at (1.0, 1.0) the channels come out
+    # R=190.7 G=179.2 B=178.1, so the scene is very nearly neutral already
+    # and these are what flatten the last few per cent. The old (1.5, 1.5)
+    # was a visible-light guess and gave R=225 G=148 B=222 -- magenta.
+    p.add_argument("--red-gain", type=float, default=0.94)
+    p.add_argument("--blue-gain", type=float, default=1.01)
     p.add_argument("--bitrate", type=int, default=12_000_000)
     p.add_argument("--lores", default="1024x576",
                    help="size of the stream the web view encodes. Keep both "

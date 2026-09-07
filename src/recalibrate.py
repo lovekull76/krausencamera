@@ -33,19 +33,24 @@ import numpy as np
 
 from focus_sweep import SIZE, sweep
 from focus_tracker import (X_PP, K_LASER, C_LASER, F_OFF, F_K, F_C,
-                           LENS_REF, normalise_dx)
+                           LENS_REF, DY_NOMINAL, DY_HALFWIDTH,
+                           normalise_dx)
 from illumination import Lamp
 
 CX, CY = SIZE[0] / 2.0, SIZE[1] / 2.0
 
 
-def measure_dx(picam2, laser, lens_position, exposure_us, min_x, max_x, repeats):
+def measure_dx(picam2, laser, lens_position, exposure_us, min_x, max_x,
+               repeats, band_y=DY_NOMINAL, halfwidth=DY_HALFWIDTH):
     """Dot centroid offset, normalised to the focus the models were fitted at."""
     picam2.set_controls({"ExposureTime": exposure_us, "LensPosition": lens_position})
     time.sleep(1.6)
 
     yy, xx = np.mgrid[0:SIZE[1], 0:SIZE[0]]
-    band = (np.abs(xx - CX) > min_x) & (np.abs(xx - CX) < max_x)
+    # Both axes: |dx| excludes the tube edge, dy excludes anything bright
+    # directly above or below the dot. Same window the tracker uses.
+    band = ((np.abs(xx - CX) > min_x) & (np.abs(xx - CX) < max_x)
+            & (np.abs(yy - CY - band_y) < halfwidth))
 
     def grab(n=4):
         for _ in range(n):
@@ -132,6 +137,9 @@ def main() -> int:
     p.add_argument("--discard", type=int, default=6)
     p.add_argument("--min-x", type=float, default=100.0)
     p.add_argument("--max-x", type=float, default=450.0)
+    p.add_argument("--band-y", type=float, default=DY_NOMINAL,
+                   help="centre of the vertical search window, px below centre")
+    p.add_argument("--band-halfwidth", type=float, default=DY_HALFWIDTH)
     p.add_argument("--repeats", type=int, default=4)
     p.add_argument("--min-contrast", type=float, default=3.0,
                    help="reject the focus sweep below this peak-to-floor "
@@ -219,14 +227,18 @@ def main() -> int:
 
         print("\n=== laser ===")
         spot = measure_dx(picam2, laser, dpt, args.exposure_us,
-                          args.min_x, args.max_x, args.repeats)
+                          args.min_x, args.max_x, args.repeats,
+                          args.band_y, args.band_halfwidth)
     finally:
         picam2.stop()
         laser.shutdown()
         led.shutdown()
 
     if spot is None:
-        print("no laser dot found in the band -- nothing to compare")
+        print(f"no laser dot found in the window "
+              f"(|dx| {args.min_x:.0f}-{args.max_x:.0f}, "
+              f"dy {args.band_y-args.band_halfwidth:.0f} to "
+              f"{args.band_y+args.band_halfwidth:.0f}) -- nothing to compare")
         return 1
     print(f"dx = {spot['dx']:.2f} +/- {spot['dx_sd']:.2f} at {dpt:.2f} dpt "
           f"-> {spot['dx_ref']:.2f} normalised to {LENS_REF:.1f}   "

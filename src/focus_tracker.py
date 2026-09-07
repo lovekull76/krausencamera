@@ -51,6 +51,16 @@ F_OFF, F_K, F_C = 0.440, 801.0, -19.95
 LENS_REF = 7.7
 BREATHING_PER_DPT = 0.0068
 
+# The search window. |dx| keeps the tube edge out -- it is the brightest thing
+# in the frame and sits at dx = 871, which once captured laser_align entirely.
+# dy needs a window too: nothing but brightness stops a reflection directly
+# above or below the dot from winning. Measured dy in this housing runs 102-115
+# px over 80-180 mm, so the beam really is in the camera's plane and the spread
+# is distance, not drift. +/-45 px is about 3 mm of object space at the near
+# end, ample for mounting tolerance while still excluding most of the frame.
+DX_MIN, DX_MAX = 100.0, 450.0
+DY_NOMINAL, DY_HALFWIDTH = 110.0, 45.0
+
 
 def normalise_dx(dx: float, lens_position: float) -> float:
     """dx as it would have been seen at the focus the model was fitted at."""
@@ -74,8 +84,9 @@ class FocusTracker:
 
     def __init__(self, picam2, illumination, laser, *, size,
                  interval_s=60.0, laser_exposure_us=8000,
-                 threshold_dpt=1.2, band_y=None, band_halfwidth=60.0,
-                 min_dx=100.0, max_dx=450.0, min_peak=20.0,
+                 threshold_dpt=1.2, band_y=DY_NOMINAL,
+                 band_halfwidth=DY_HALFWIDTH,
+                 min_dx=DX_MIN, max_dx=DX_MAX, min_peak=20.0,
                  restore_controls=None, settle_s=1.4, initial_lens=7.1):
         self._picam2 = picam2
         self._ir = illumination
@@ -84,9 +95,6 @@ class FocusTracker:
         self._interval = interval_s
         self._exposure = laser_exposure_us
         self._threshold = threshold_dpt
-        # The dot rides a horizontal line whose height is set by where the
-        # camera sits in its mount, not by the optics -- measured to move 50-70
-        # um between mountings. Established at startup rather than hardcoded.
         self._band_y = band_y
         self._halfwidth = band_halfwidth
         self._min_dx, self._max_dx = min_dx, max_dx
@@ -103,6 +111,7 @@ class FocusTracker:
         self.lens_position: float = initial_lens
         self.last_dx: float | None = None
         self.last_peak: float | None = None
+        self.last_dy: float | None = None
         self.spread_px: float | None = None
         self.updated_at: float | None = None
 
@@ -125,6 +134,7 @@ class FocusTracker:
             "distance_mm": None if self.distance_mm is None else round(self.distance_mm, 1),
             "lens_position": self.lens_position,
             "dx": None if self.last_dx is None else round(self.last_dx, 2),
+            "dy": None if self.last_dy is None else round(self.last_dy, 2),
             "peak": self.last_peak,
             "spread_px": self.spread_px,
             "age_s": None if self.updated_at is None else round(time.time() - self.updated_at),
@@ -212,6 +222,15 @@ class FocusTracker:
         self.distance_mm = d
         self.last_dx = spot["dx"]
         self.last_peak = round(spot["peak"])
+        self.last_dy = spot["dy"]
+        # A window that silently clips is worse than none: the reading would
+        # just stop, with no clue why. Warn while there is still margin.
+        if self._band_y is not None:
+            margin = self._halfwidth - abs(spot["dy"] - self._band_y)
+            if margin < 0.25 * self._halfwidth:
+                log.warning("dy=%.1f is %.1f px from the edge of the search "
+                            "window -- the mounting has shifted, or the window "
+                            "is wrong for this build", spot["dy"], margin)
         self.spread_px = round(spot["spread"], 1)
         self.updated_at = time.time()
 

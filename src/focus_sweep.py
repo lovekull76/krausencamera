@@ -120,6 +120,9 @@ def main() -> int:
                         "zero gradient, which contaminates the sharpness metric "
                         "with something that is not focus")
     p.add_argument("--blue-gain", type=float, default=1.0)
+    p.add_argument("--min-contrast", type=float, default=3.0,
+                   help="warn below this peak-to-floor ratio in the sweep "
+                        "(a patterned target gives about 14)")
     p.add_argument("--roi", type=float, default=0.5,
                    help="central fraction of the frame to measure, so the tube "
                         "mouth and vignetting do not dominate (default 0.5)")
@@ -194,6 +197,20 @@ def main() -> int:
         agree = abs(peak_lap[0] - peak_grad[0])
         print(f"metrics differ by {agree:.2f} dpt "
               f"({'consistent' if agree <= 0.3 else 'INCONSISTENT -- check target contrast'})")
+
+        # Agreement between the metrics is not evidence the target has any
+        # contrast. Both are computed from the same frames, so on a blank
+        # surface they agree exactly -- on noise. Measured against white paper:
+        # a confident peak at 9.30 dpt from both, with the whole curve spanning
+        # 5.1 to 6.1. The darkness check above cannot see it either; the scene
+        # was well lit. What separates the two cases is the curve's own range.
+        laps = [r[1] for r in coarse + fine]
+        ratio = max(laps) / max(min(laps), 1e-6)
+        print(f"sweep contrast: {ratio:.1f}x peak to floor "
+              f"({'ok' if ratio >= args.min_contrast else 'TOO FLAT'})")
+        if ratio < args.min_contrast:
+            print("  Below this the peak is noise, not focus. A patterned "
+                  "target gives about 14x; blank paper gives 1.2x.")
         if peak_lap[0] > 0:
             print(f"implied object distance: {1000.0/peak_lap[0]:.0f} mm "
                   f"(from the lens reference plane, whose exact location is "
