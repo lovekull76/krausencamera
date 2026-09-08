@@ -749,6 +749,31 @@ was entirely the focus, and the series is otherwise clean enough to measure on.
 That the field came out as a pure radial scaling rather than a translation is
 what gave it away — a mount slipping shifts things, it does not magnify them.
 
+### Measure the creep at fixed focus
+
+The breathing correction `dx / (1 + 0.0068·(lp − 7.7))` is a *model*, with one
+coefficient measured at one distance. It belongs in the production path, where
+autofocus has to move. It does not belong in a drift study, where the whole
+point is to observe rather than to model — a slow focus change would enter the
+reading through the correction's own error and be indistinguishable from the
+thing being measured.
+
+So the drift run holds `LensPosition` at 11.53 with the threshold set high
+enough that the tracker never moves it. `dx` and `dy` are then raw.
+
+It also buys a free diagnostic: **at fixed focus, sharpness tracks distance.**
+If the target ever really moves, the frames soften — and that is an independent
+check on the reading, using no laser at all.
+
+### Ranging and archiving need separate clocks
+
+Frame A was captured inside the ranging cycle, so adding the archive at five
+minute intervals silently slowed ranging from 60 s to 300 s. A height is a few
+bytes and wants to be frequent; a frame is 200 kB and does not. They now have
+`--af-interval` and `--snapshot-interval` independently, which is what the
+architecture called for in the first place: constant fast height, variable image
+rate.
+
 ### Ambient temperature is a live variable, and was not being logged
 
 The garage door opened twice during the test window, onto cold air. The Pi is

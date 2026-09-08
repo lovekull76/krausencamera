@@ -532,6 +532,9 @@ def main() -> int:
                         "about half the measured depth of field)")
     p.add_argument("--snapshot-dir",
                    help="save frame A here after each ranging cycle")
+    p.add_argument("--snapshot-interval", type=float, default=300.0,
+                   help="seconds between frame A captures, independent of "
+                        "--af-interval (default 300)")
     p.add_argument("--snapshot-exposure-us", type=int, default=25000,
                    help="locked exposure for frame A; 25 ms was measured "
                         "as the longest that does not clip high krausen")
@@ -565,6 +568,7 @@ def main() -> int:
             initial_lens=args.lens_position,
             snapshot_dir=args.snapshot_dir,
             snapshot_exposure_us=args.snapshot_exposure_us,
+            snapshot_interval_s=args.snapshot_interval,
         )
         Handler.tracker = tracker
         tracker.start()

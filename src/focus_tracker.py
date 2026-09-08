@@ -105,7 +105,8 @@ class FocusTracker:
                  band_halfwidth=DY_HALFWIDTH,
                  min_dx=DX_MIN, max_dx=DX_MAX, min_peak=20.0,
                  restore_controls=None, settle_s=1.4, initial_lens=7.1,
-                 snapshot_dir=None, snapshot_exposure_us=25000):
+                 snapshot_dir=None, snapshot_exposure_us=25000,
+                 snapshot_interval_s=300.0):
         self._picam2 = picam2
         self._ir = illumination
         self._laser = laser
@@ -142,6 +143,12 @@ class FocusTracker:
         # grabs could not settle whether the tube's mouth had moved.
         self._snap_dir = snapshot_dir
         self._snap_exposure = snapshot_exposure_us
+        # Ranging and archiving are different jobs on different clocks. A
+        # height is a few bytes and wants to be frequent; a frame is 200 kB
+        # and does not. Tying the two together silently slowed ranging to
+        # the archive's cadence the moment the archive was added.
+        self._snap_interval = snapshot_interval_s
+        self._last_snap = 0.0
         if snapshot_dir:
             os.makedirs(snapshot_dir, exist_ok=True)
 
@@ -231,6 +238,12 @@ class FocusTracker:
         # grabs could not settle whether the tube's mouth had moved.
         self._snap_dir = snapshot_dir
         self._snap_exposure = snapshot_exposure_us
+        # Ranging and archiving are different jobs on different clocks. A
+        # height is a few bytes and wants to be frequent; a frame is 200 kB
+        # and does not. Tying the two together silently slowed ranging to
+        # the archive's cadence the moment the archive was added.
+        self._snap_interval = snapshot_interval_s
+        self._last_snap = 0.0
         if snapshot_dir:
             os.makedirs(snapshot_dir, exist_ok=True)
 
@@ -334,7 +347,9 @@ class FocusTracker:
                     # made the first frame of a series look as though the tube's
                     # mouth had grown, which is exactly the kind of movement
                     # these frames exist to detect.
-                    if self._snap_dir:
+                    now = time.monotonic()
+                    if self._snap_dir and now - self._last_snap >= self._snap_interval:
+                        self._last_snap = now
                         try:
                             self._snapshot(self._picam2)
                         except Exception:
