@@ -687,6 +687,45 @@ The free test is still running: if `dx` reverses, the motion is rotation-like;
 if it merely flattens, it is settling. `spread` and `peak` are now logged on
 every line rather than only when the lens moves.
 
+### The dot minus the target isolates the laser alone
+
+With the target fixed and angles small, writing the camera's translation as δ,
+its rotation as φ and the laser's rotation as ψ:
+
+```
+dot in image     = f·ψ − f·δ/d − f·φ
+target in image  =       − f·δ/d − f·φ
+difference       = f·ψ
+```
+
+**Both camera terms cancel.** Whatever the camera did, the dot's position minus
+the target's measures the laser's rotation in space and nothing else. This is
+the same invariance that makes triangulation robust to how the housing points,
+used as a diagnostic instead.
+
+```
+dot − target   (+32.6, +21.0) px = 38.8 px  ->  laser  1.39°
+target alone                11   px         ->  camera 0.39°
+```
+
+The housing and the laser turned 1.39 degrees; the camera followed only 0.39.
+The difference is the camera board moving in its mount — the one thing that
+changed when it was screwed down for the first time in this housing.
+
+**Checked against a prediction.** If the tube's mouth is rigid with the housing,
+it should have moved 1.00 degree, or 12 px at lores. Measured on its left edge:
+13 px. And the parallax is there — the near mouth moved 13.0 px while the
+distant target moved 4.1.
+
+> **Direction is not established.** Three methods give three answers: Love's eye
+> says down-right, the border crossings say the disc left the top edge, and a
+> patch correlation says up-left. The mouth's edge is an illumination falloff
+> rather than a mechanical edge, and the two frames were taken at different
+> exposures, so each method finds its own point on a soft gradient and that
+> point moves with brightness. The magnitude survives because it is a difference
+> between two patches within the same pair; the direction does not. The frame A
+> series settles it, since every frame is now at the same locked 25 ms.
+
 ### Auto exposure for the live view, locked for the archive
 
 These are different jobs and they were conflated in one flag. The live view is
