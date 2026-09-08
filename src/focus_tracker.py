@@ -50,7 +50,25 @@ def soc_temp() -> float:
     except Exception:
         return float("nan")
 
-# Laser geometry for this build, from four target positions 2026-09-07.
+# !!! THESE CONSTANTS ARE VOID -- DO NOT TRUST A DISTANCE COMPUTED FROM THEM !!!
+#
+# The four-position series they come from (2026-09-07) was measured with a
+# camera module that had been mechanically damaged the day before: the PCB's
+# screw hole was being opened out, the drill caught, and the module spun with it
+# at 2000 rpm. Inspection on 2026-09-08 found the optics pointing visibly wrong
+# relative to the housing's aperture.
+#
+# Everything the fit could not explain is explained by that. The +/-1.5 px
+# residuals first blamed on the patterned target; f*b disagreeing with a known
+# 10.5 mm baseline; dy rising monotonically through the series and being read as
+# a distance effect when the points were taken hours apart while the geometry
+# was moving.
+#
+# They are left in place so the tracker runs and so the shape of the model stays
+# documented. Recalibrate against a sound camera before any reading in
+# millimetres is believed. src/recalibrate.py does it; targets page 3 is the
+# sheet to use.
+#
 # dx = X_PP + K / (d + C), distances to the housing face.
 X_PP, K_LASER, C_LASER = 64.0, 16782.0, -6.38
 # Focus, same positions: dpt = F_OFF + F_K / (d + F_C)

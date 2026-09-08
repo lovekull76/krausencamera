@@ -325,6 +325,29 @@ takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
 directions. Most of that is pipeline latency, not the actuator. The old
 `0.35 + 0.04/dioptre` sampled inside the transition.
 
+## ⚠️ The 2026-09-07 calibration is void
+
+The camera module used for it had been damaged the day before — the drill caught
+while its screw hole was being opened out and spun the module at 2000 rpm.
+Inspection on 2026-09-08 found the optics pointing visibly wrong relative to the
+housing's aperture.
+
+**Everything below this line that depends on that camera is unreliable**, and
+the sections that follow record the two days spent discovering it. They are kept
+because the *methods* are sound and several were hard-won — the invariance
+argument, dot-minus-target, texture-death for the mouth, the speckle target,
+tilt by sector — but no constant fitted with that camera should be used.
+
+Specifically void: the four-point series (180/130/108/80 mm), `f·b = 16782`,
+`X_PP`, `C`, and every distance in millimetres quoted from them. The focus model
+`dpt = 0.440 + 801/(d − 19.95)` is void as an absolute calibration too, though
+its *form* held up well.
+
+What survives: measurements from before the damage — the 1.5 mm aperture's
+photometry, the depth of field figures, the liquid and turbidity work, the
+illumination and thermal characterisation. And the negative results, which cost
+nothing to keep and would otherwise be rediscovered.
+
 ## New housing, 10.5 mm baseline (2026-09-07)
 
 Recalibrated after the rebuild. Distances are to the housing face; the fits
