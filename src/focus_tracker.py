@@ -346,11 +346,28 @@ class FocusTracker:
             for _ in range(4):
                 picam2.capture_array("main")
             a = picam2.capture_array("main")
-            path = os.path.join(self._snap_dir,
-                                time.strftime("A-%Y%m%d-%H%M%S.jpg"))
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            path = os.path.join(self._snap_dir, f"A-{stamp}.jpg")
             Image.fromarray(a[:, :, :3][:, :, ::-1]).save(path, quality=88)
             log.info("frame A -> %s (%.0f mean)", os.path.basename(path),
                      a[:, :, :3].mean())
+
+            # And one with the laser lit as well, at the same exposure so the
+            # two overlay exactly. Not a measurement -- the dot blooms badly at
+            # frame A's exposure -- but it puts the target, the mouth and the
+            # dot in one picture, which is the only way to see how the three
+            # move against each other by eye.
+            self._laser.acquire()
+            try:
+                time.sleep(0.3)
+                for _ in range(3):
+                    picam2.capture_array("main")
+                b = picam2.capture_array("main")
+            finally:
+                self._laser.release()
+            both = os.path.join(self._snap_dir, f"AL-{stamp}.jpg")
+            Image.fromarray(b[:, :, :3][:, :, ::-1]).save(both, quality=88)
+            log.info("frame A+laser -> %s", os.path.basename(both))
         finally:
             self._ir.release()
 
