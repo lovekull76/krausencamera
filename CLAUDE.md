@@ -893,9 +893,48 @@ Every conclusion drawn today from "the mouth has moved" is therefore void. It is
 the same error as the fixed-mask centroid and the mis-placed annulus, in a third
 disguise — measuring the light and calling it geometry.
 
-What survives is mechanically anchored: the **speckle target**, fixed to the
-world and correlatable to sub-pixel anywhere in frame, and **dot minus target**,
-which isolates the laser whatever the camera does. The ring is dropped.
+### Measure the mouth by where the texture stops, not by brightness
+
+Love pointed out that the illumination is strongly asymmetric — light enters
+from the right, so the right of the tube is lit only by floor reflection while
+the left gets direct light, with a bright crescent on the rim itself. That makes
+an **angular average invalid**: a sharp edge sitting at different brightness
+levels around the circumference averages into a smooth ramp. The 500 px was
+mostly that.
+
+Single radial lines do not fix it — they pick up the speckle dots, and the
+"steepest fall" is just a black dot. What works is **texture energy averaged
+over a wedge**: where the speckle stops being resolved, the target has stopped
+being imaged. That is a geometric edge and it does not care how bright the
+region is.
+
+```
+right    speckle dies at 936 px
+left                     757 px
+up                       664 px   (the frame's own edge, not the mouth)
+down                     beyond the frame
+```
+
+Left and right give a mouth centred about **90 px right of the image centre**
+with a radius near **846 px**. At `f = 1590` that is a half-angle of 28.0
+degrees, so a 42.6 mm aperture at 40 mm against a nominal 38 — twelve per cent,
+on an arbitrary 50 % criterion over a gradual transition. Fair agreement.
+
+**This reverses "drop the ring".** The mouth *is* measurable; brightness was the
+wrong observable. An illumination pattern is fixed to nothing, but the radius at
+which texture dies is fixed to the housing.
+
+So three quantities, each anchored to something mechanical:
+
+| quantity | fixed to | measured as |
+|---|---|---|
+| speckle target | the world | correlation, sub-pixel |
+| mouth | the housing | radius where texture dies |
+| dot − target | the laser | centroid minus correlation |
+
+The blank landing disc also shows up as low texture near the centre, offset to
+the right — the target's disc is not centred on the optical axis. Harmless at
+present margins, worth knowing when re-aiming.
 
 ### The target decides whether a focus sweep means anything
 
