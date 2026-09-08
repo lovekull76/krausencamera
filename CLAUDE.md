@@ -857,11 +857,45 @@ shares no mechanism with the thing being measured.
 > from that point gives `f·b = 16692` against the fitted 16782 — **the constant
 > was right when it was measured.** What has changed since is the geometry.
 >
-> One thread is left hanging: the mouth's edge at r = 1022 still wants
-> `f ≈ 2150`, where `f·b`/b gives 1598, which would put the edge at r = 759.
-> Either the mouth sits nearer than 40 mm or something else stops the field.
-> It rests on more assumptions than the comparison above and should not outweigh
-> it.
+> That thread is now closed, and not in favour of either guess. See below.
+
+### The bright disc's edge is illumination, not the mouth
+
+Love's argument for it being the mouth is sound — the aperture sleeve sits at
+the lens and cannot be imaged at all, so a vignette edge needs a stop some
+distance away. But measuring the falloff properly settles it differently:
+
+```
+r =  700    76 % of plateau
+r =  963    50 %
+r = 1190    10 %
+```
+
+**The transition is 500 px wide.** A geometric vignette from a stop at 40 mm,
+imaged through the 1.5 mm aperture, has a penumbra of `D·(d−m)/m` at the target,
+which is 5 mm, or **46 px** in the image. Ten times sharper than what is there.
+
+So the disc's edge is the light running out — the lamp's distribution, cos⁴, and
+the tube's inner wall — not the mouth's shadow. The rim surely cuts somewhere
+further out, but it is not what dominates.
+
+**Two consequences.** The `f ≈ 2150` inferred from it was never a measurement:
+it computed a half-angle for a pattern that has no geometric half-angle.
+`f ≈ 1590` from `f·b` and the known baseline stands unopposed.
+
+And it retroactively explains why the ring fitted nothing. It moved +52 px in x
+where the paper and the dot barely moved in x at all, and no mechanical motion
+would account for it. None had to: **an illumination pattern is not fixed to the
+housing.** It moves when the lamp's geometry does, or the inner wall's lighting,
+not when the mouth does.
+
+Every conclusion drawn today from "the mouth has moved" is therefore void. It is
+the same error as the fixed-mask centroid and the mis-placed annulus, in a third
+disguise — measuring the light and calling it geometry.
+
+What survives is mechanically anchored: the **speckle target**, fixed to the
+world and correlatable to sub-pixel anywhere in frame, and **dot minus target**,
+which isolates the laser whatever the camera does. The ring is dropped.
 
 ### The target decides whether a focus sweep means anything
 
