@@ -530,6 +530,11 @@ def main() -> int:
     p.add_argument("--af-threshold", type=float, default=1.2,
                    help="dioptres of drift before the lens is moved (default 1.2, "
                         "about half the measured depth of field)")
+    p.add_argument("--snapshot-dir",
+                   help="save frame A here after each ranging cycle")
+    p.add_argument("--snapshot-exposure-us", type=int, default=25000,
+                   help="locked exposure for frame A; 25 ms was measured "
+                        "as the longest that does not clip high krausen")
     p.add_argument("--auto-wb", action="store_true",
                    help="unlock exposure/white balance -- for aiming only")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -558,6 +563,8 @@ def main() -> int:
             interval_s=args.af_interval, laser_exposure_us=args.af_exposure_us,
             threshold_dpt=args.af_threshold, restore_controls=restore,
             initial_lens=args.lens_position,
+            snapshot_dir=args.snapshot_dir,
+            snapshot_exposure_us=args.snapshot_exposure_us,
         )
         Handler.tracker = tracker
         tracker.start()

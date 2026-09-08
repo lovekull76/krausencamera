@@ -24,6 +24,7 @@ the depth of field costs a handful of moves per batch.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 
@@ -87,7 +88,8 @@ class FocusTracker:
                  threshold_dpt=1.2, band_y=DY_NOMINAL,
                  band_halfwidth=DY_HALFWIDTH,
                  min_dx=DX_MIN, max_dx=DX_MAX, min_peak=20.0,
-                 restore_controls=None, settle_s=1.4, initial_lens=7.1):
+                 restore_controls=None, settle_s=1.4, initial_lens=7.1,
+                 snapshot_dir=None, snapshot_exposure_us=25000):
         self._picam2 = picam2
         self._ir = illumination
         self._laser = laser
@@ -118,6 +120,14 @@ class FocusTracker:
         # is forced off and the exposure drops to 8 ms. Without a flag the
         # page has no way to say why, and it reads as a fault.
         self.busy = False
+        # Frame A, saved at a locked exposure after each ranging cycle.
+        # Locked because a series shot under auto exposure cannot be
+        # compared frame to frame -- which is exactly why two live-view
+        # grabs could not settle whether the tube's mouth had moved.
+        self._snap_dir = snapshot_dir
+        self._snap_exposure = snapshot_exposure_us
+        if snapshot_dir:
+            os.makedirs(snapshot_dir, exist_ok=True)
 
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -199,6 +209,14 @@ class FocusTracker:
             return self._measure(picam2)
         finally:
             self.busy = False
+        # Frame A, saved at a locked exposure after each ranging cycle.
+        # Locked because a series shot under auto exposure cannot be
+        # compared frame to frame -- which is exactly why two live-view
+        # grabs could not settle whether the tube's mouth had moved.
+        self._snap_dir = snapshot_dir
+        self._snap_exposure = snapshot_exposure_us
+        if snapshot_dir:
+            os.makedirs(snapshot_dir, exist_ok=True)
 
     def _measure(self, picam2):
         # Frame B's conditions: illumination held off so the dot is alone, and
@@ -222,8 +240,33 @@ class FocusTracker:
                 self._laser.release()
             spot = self._find_dot(lit - dark)
 
+        if self._snap_dir:
+            try:
+                self._snapshot(picam2)
+            except Exception:
+                log.exception("frame A failed")
         picam2.set_controls(dict(self._restore))
         return spot
+
+    def _snapshot(self, picam2) -> None:
+        """Frame A: illumination on, laser off, exposure locked."""
+        from PIL import Image
+        self._ir.acquire()
+        try:
+            picam2.set_controls({"AeEnable": False,
+                                 "ExposureTime": self._snap_exposure,
+                                 "AnalogueGain": 1.0})
+            time.sleep(1.0)
+            for _ in range(4):
+                picam2.capture_array("main")
+            a = picam2.capture_array("main")
+            path = os.path.join(self._snap_dir,
+                                time.strftime("A-%Y%m%d-%H%M%S.jpg"))
+            Image.fromarray(a[:, :, :3][:, :, ::-1]).save(path, quality=88)
+            log.info("frame A -> %s (%.0f mean)", os.path.basename(path),
+                     a[:, :, :3].mean())
+        finally:
+            self._ir.release()
 
     def _apply(self, spot) -> None:
         d = distance_for(spot["dx"], self.lens_position)
