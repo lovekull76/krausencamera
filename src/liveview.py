@@ -532,6 +532,9 @@ def main() -> int:
                         "about half the measured depth of field)")
     p.add_argument("--snapshot-dir",
                    help="save frame A here after each ranging cycle")
+    p.add_argument("--no-laser", action="store_true",
+                   help="no laser fitted: take frame A on the snapshot "
+                        "interval and skip ranging entirely")
     p.add_argument("--af-band-y", type=float, default=None,
                    help="centre of the vertical search window, px below the "
                         "image centre (default from focus_tracker)")
@@ -568,7 +571,7 @@ def main() -> int:
     Handler.lores = lores_size(args)
 
     tracker = None
-    if args.autofocus:
+    if args.autofocus or (args.no_laser and args.snapshot_dir):
         tracker = FocusTracker(
             picam2, lamp, laser, size=MAIN_SIZE,
             interval_s=args.af_interval, laser_exposure_us=args.af_exposure_us,
@@ -581,6 +584,7 @@ def main() -> int:
             snapshot_exposure_us=args.snapshot_exposure_us,
             snapshot_interval_s=args.snapshot_interval,
             pdaf_every=args.pdaf_every,
+            laser_fitted=not args.no_laser,
         )
         Handler.tracker = tracker
         tracker.start()

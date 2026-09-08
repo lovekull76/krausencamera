@@ -122,7 +122,8 @@ class FocusTracker:
                  min_dx=DX_MIN, max_dx=DX_MAX, min_peak=20.0,
                  restore_controls=None, settle_s=1.4, initial_lens=7.1,
                  snapshot_dir=None, snapshot_exposure_us=25000,
-                 snapshot_interval_s=300.0, pdaf_every=0):
+                 snapshot_interval_s=300.0, pdaf_every=0,
+                 laser_fitted=True):
         self._picam2 = picam2
         self._ir = illumination
         self._laser = laser
@@ -170,6 +171,7 @@ class FocusTracker:
         self._pdaf_every = pdaf_every
         self._cycles = 0
         self.pdaf_mm = None
+        self._laser_fitted = laser_fitted
         if snapshot_dir:
             os.makedirs(snapshot_dir, exist_ok=True)
 
@@ -254,25 +256,6 @@ class FocusTracker:
             return self._measure(picam2)
         finally:
             self.busy = False
-        # Frame A, saved at a locked exposure after each ranging cycle.
-        # Locked because a series shot under auto exposure cannot be
-        # compared frame to frame -- which is exactly why two live-view
-        # grabs could not settle whether the tube's mouth had moved.
-        self._snap_dir = snapshot_dir
-        self._snap_exposure = snapshot_exposure_us
-        # Ranging and archiving are different jobs on different clocks. A
-        # height is a few bytes and wants to be frequent; a frame is 200 kB
-        # and does not. Tying the two together silently slowed ranging to
-        # the archive's cadence the moment the archive was added.
-        self._snap_interval = snapshot_interval_s
-        self._last_snap = 0.0
-        # Phase-detect autofocus, run every N cycles as a cross-check and
-        # then put the lens back exactly where it was.
-        self._pdaf_every = pdaf_every
-        self._cycles = 0
-        self.pdaf_mm = None
-        if snapshot_dir:
-            os.makedirs(snapshot_dir, exist_ok=True)
 
     def _measure(self, picam2):
         # Frame B's conditions: illumination held off so the dot is alone, and
@@ -357,17 +340,18 @@ class FocusTracker:
             # frame A's exposure -- but it puts the target, the mouth and the
             # dot in one picture, which is the only way to see how the three
             # move against each other by eye.
-            self._laser.acquire()
-            try:
-                time.sleep(0.3)
-                for _ in range(3):
-                    picam2.capture_array("main")
-                b = picam2.capture_array("main")
-            finally:
-                self._laser.release()
-            both = os.path.join(self._snap_dir, f"AL-{stamp}.jpg")
-            Image.fromarray(b[:, :, :3][:, :, ::-1]).save(both, quality=88)
-            log.info("frame A+laser -> %s", os.path.basename(both))
+            if self._laser_fitted:
+                self._laser.acquire()
+                try:
+                    time.sleep(0.3)
+                    for _ in range(3):
+                        picam2.capture_array("main")
+                    b = picam2.capture_array("main")
+                finally:
+                    self._laser.release()
+                both = os.path.join(self._snap_dir, f"AL-{stamp}.jpg")
+                Image.fromarray(b[:, :, :3][:, :, ::-1]).save(both, quality=88)
+                log.info("frame A+laser -> %s", os.path.basename(both))
         finally:
             self._ir.release()
 
@@ -412,7 +396,32 @@ class FocusTracker:
                      spot["dy"], spot["spread"], spot["peak"], soc_temp(),
                      want, self._threshold)
 
+    def snapshot_only(self, picam2=None) -> None:
+        """Frame A without ranging, for a rig that has no laser fitted.
+
+        The speckle target alone still answers the question that matters for a
+        new camera: does the image move against a world-fixed pattern? Tying
+        snapshots to the ranging cycle would have made that unmeasurable until
+        the laser was mounted.
+        """
+        self.busy = True
+        try:
+            self._snapshot(picam2 or self._picam2)
+        finally:
+            self.busy = False
+            (picam2 or self._picam2).set_controls(dict(self._restore))
+
     def _run(self) -> None:
+        if not self._laser_fitted:
+            log.info("no laser configured: frame A only, every %.0f s",
+                     self._snap_interval)
+            while not self._stop.is_set():
+                try:
+                    self.snapshot_only()
+                except Exception:
+                    log.exception("frame A failed")
+                self._stop.wait(self._snap_interval)
+            return
         while not self._stop.is_set():
             try:
                 spot = self.measure()
