@@ -793,6 +793,44 @@ The 1.2 dioptre deadband is a further guard. Even at a gain near unity the loop
 would **stop** rather than oscillate, since small corrections are never applied
 — a limit cycle at worst, never a spiral.
 
+### Both the camera and the laser are moving, in a ratio of 1 to 4
+
+The drift **accelerated**: 1.5 px/h overnight, then 3.95, 4.08, 7.67 and
+9.93 px/h across four hours the next morning, with the SoC temperature flat
+throughout. Mechanical settling decelerates by definition, so that hypothesis
+goes too. Something is giving way, and faster as it goes.
+
+Measuring the scene took three attempts, and the first two were worthless:
+
+- **Patch correlation** has nothing to lock onto. The target is blank white
+  paper, and patches with a standard deviation under 10 counts returned
+  agreeing nonsense — three neighbours all reporting −25 px.
+- **Threshold crossings on the mouth's edge** wander with local brightness
+  rather than geometry: +22 px on one column and −6 on its neighbour.
+- **The centroid of the whole illumination pattern** works, because it averages
+  three million pixels instead of reading one contour, and because exposure and
+  focus are both locked so nothing but geometry can move it.
+
+```
+dy of the illumination pattern   +5.88 px over 4 h, monotonic
+noise between adjacent frames     0.23 px
+laser dot over the same window   +24 px
+```
+
+Twenty-five times the noise, so the scene really is moving — which every earlier
+measurement had missed. **It is not the laser alone.** Against the algebra, the
+camera terms account for about 6 px and the remaining 18 is genuine
+camera-to-laser motion. Both are non-zero; they were treated as either/or.
+
+> The centroid moves toward larger y, which is *down* the image and therefore a
+> camera moving *up*. Love read the mouth as creeping up, which is the opposite.
+> The centroid is not purely the mouth — the bright patch to the right pulls it
+> — so the direction is not settled, only the fact of the movement.
+
+**And PDAF holds still through all of it**: 104.6, 104.5, 105.1 mm across two
+hours while the laser sat 14 mm away. The reading with no baseline is the stable
+one, which is the case Love made for it before any of this data existed.
+
 ### The module can focus itself, and it is a second opinion worth having
 
 The Camera Module 3 has phase-detect pixels, so it does not need the laser at
