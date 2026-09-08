@@ -325,6 +325,42 @@ takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
 directions. Most of that is pipeline latency, not the actuator. The old
 `0.35 + 0.04/dioptre` sampled inside the transition.
 
+## The drift tracks the print's age, not the camera (2026-09-08)
+
+Two independent faults appeared on the same day and were conflated for two days,
+because on 2026-09-07 Love both printed a new housing *and* drilled into the
+camera. Separating them took a timeline:
+
+| part | printed | age when measured | drift |
+|---|---|---|---|
+| window dummy | 09-02 14:19 | weeks | — |
+| **housing 1** | 09-02, afternoon | days | none noticed |
+| **housing 2** | 09-07 ~14:00 | ~8 h | 1.5–9.9 px/h, never settled |
+| **housing 3** | 09-08 16:32 | **3.5 h** | 14.7 -> 2.4 px/h |
+
+The youngest print drifts fastest; the oldest does not drift at all. And housing
+3 carries a **factory-fresh camera**, so the drift cannot be the camera.
+
+- **A fresh print drifts.** Residual stress relaxing, over days to weeks at room
+  temperature — exactly the scale separating housing 1 from housings 2 and 3.
+- **The drill gave tilt, light loss, a field-dependent mapping and poor
+  centring.** Only ever in the old camera.
+
+Both are real; neither explains the other.
+
+**This makes annealing the right fix**, which was Love's instinct before there
+was evidence for it. Eight hours at 90 °C (ABS Tg ≈ 105) collapses that
+relaxation into one cycle. It has to happen **before** final fitting, since the
+stress coming out is a dimensional change.
+
+Two predictions, both free to check: housing 3 should keep decelerating and stop
+over *days*, and an annealed housing should drift far less from the start — the
+number to beat is **14.7 px/h in its first hour**.
+
+> The window dummy is exonerated by the same timeline: printed 09-02, clamped
+> since, and in the same age class as housing 1, which never drifted. Stiffening
+> it would address the one joint that has already settled.
+
 ## ⚠️ The 2026-09-07 calibration is void
 
 The camera module used for it had been damaged the day before — the drill caught
