@@ -324,10 +324,13 @@ class FocusTracker:
                     break
             if state == 2 and lp:
                 self.pdaf_mm = distance_from_focus(lp)
-                gap = self.pdaf_mm - (self.distance_mm or float("nan"))
-                log.info("pdaf: %.2f dpt -> %.1f mm   laser says %.1f   gap %+.1f mm%s",
-                         lp, self.pdaf_mm, self.distance_mm or float("nan"), gap,
-                         "   DISAGREE" if abs(gap) > 4.0 else "")
+                if self.distance_mm is None:
+                    log.info("pdaf: %.3f dpt -> %.1f mm", lp, self.pdaf_mm)
+                else:
+                    gap = self.pdaf_mm - self.distance_mm
+                    log.info("pdaf: %.3f dpt -> %.1f mm   laser says %.1f   "
+                             "gap %+.1f mm%s", lp, self.pdaf_mm, self.distance_mm,
+                             gap, "   DISAGREE" if abs(gap) > 4.0 else "")
             else:
                 log.warning("pdaf did not converge (state=%s)", state)
         finally:
@@ -431,13 +434,23 @@ class FocusTracker:
 
     def _run(self) -> None:
         if not self._laser_fitted:
-            log.info("no laser configured: frame A only, every %.0f s",
-                     self._snap_interval)
+            log.info("no laser configured: frame A every %.0f s%s",
+                     self._snap_interval,
+                     f", pdaf every {self._pdaf_every}" if self._pdaf_every else "")
+            n = 0
             while not self._stop.is_set():
                 try:
                     self.snapshot_only()
                 except Exception:
                     log.exception("frame A failed")
+                n += 1
+                # Phase detection needs no laser, so it is the only distance
+                # available on a rig without one -- and it costs a few seconds.
+                if self._pdaf_every and n % self._pdaf_every == 0:
+                    try:
+                        self._pdaf(self._picam2)
+                    except Exception:
+                        log.exception("pdaf failed")
                 self._stop.wait(self._snap_interval)
             return
         while not self._stop.is_set():

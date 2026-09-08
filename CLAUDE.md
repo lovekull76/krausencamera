@@ -1164,10 +1164,31 @@ sharper and its contrast three times higher — it measures **less** tilt with a
 numbers alone. The directions differ by 20 degrees, so these are two units with
 their own tolerances rather than one shared defect.
 
-**Neither is pristine.** 0.114 dpt is still "marginal", matching Love's
-impression that the spare's lens also looks tilted. So some of this is ordinary
-manufacturing tolerance, and the drill is worth roughly the difference rather
-than the whole figure.
+**The spare is new out of its box**, which makes 0.114 dpt the *factory* figure
+rather than a used one — so 0.193 on the damaged module sits clearly above
+factory and the drill is worth the difference, roughly doubling it. That is the
+control this measurement needed, and it turned out to already exist.
+
+It also means some tilt is simply normal: a fresh module gives 0.10 degrees, so
+there is no point chasing below that.
+
+**Centring, and what cannot be measured.** By the same texture-death estimator:
+
+| | mouth centre in x | radius |
+|---|---|---|
+| new camera | **+28 px** (0.66 mm at the mouth) | 831 px |
+| old, *after* the damage | +87 px (2.0 mm) | 848 px |
+
+Three times better centred — but against the *damaged* old module. Love's
+impression is that it centres worse than the old one did *before* the drill, and
+no measurement of that state exists, so it can be neither confirmed nor
+contradicted.
+
+> And only in x. The mouth's radius is 831 px where half the frame height is
+> 648, so the texture never dies going up or down and vertical centring is
+> unmeasurable at this working distance. If what Love sees is a vertical offset,
+> none of these numbers speak to it. A caliper against the housing's aperture
+> answers it faster than moving the target closer would.
 
 > Absolute dioptres are **not** comparable between modules — the spare peaks at
 > 4.4 dpt where the old one peaked at 5.5 on the same target, because the VCM's
