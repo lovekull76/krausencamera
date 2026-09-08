@@ -325,7 +325,13 @@ class FocusTracker:
             if state == 2 and lp:
                 self.pdaf_mm = distance_from_focus(lp)
                 if self.distance_mm is None:
-                    log.info("pdaf: %.3f dpt -> %.1f mm", lp, self.pdaf_mm)
+                    # The dioptre is the measurement; the millimetres come from
+                    # a focus model fitted to a camera that turned out to be
+                    # damaged, and are void until it is refitted. Repeatability
+                    # of the raw value is what a drift run needs anyway.
+                    log.info("pdaf: %.3f dpt   (= %.0f mm via the VOID focus "
+                             "model -- track the dioptre, not this)",
+                             lp, self.pdaf_mm)
                 else:
                     gap = self.pdaf_mm - self.distance_mm
                     log.info("pdaf: %.3f dpt -> %.1f mm   laser says %.1f   "
