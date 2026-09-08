@@ -761,6 +761,34 @@ The SoC temperature now goes into every log line as a stand-in for ambient. It
 is a poor thermometer in absolute terms but it moves with the room, which is all
 the correlation needs.
 
+**And the room's own log rules the hypothesis out.** Over the drift window the
+garage moved 22.2 -> 21.8 C, four tenths of a degree, while `dy` moved 21 px —
+0.75 degrees of relative rotation at f = 1600.
+
+| | |
+|---|---|
+| implied sensitivity | **1.9 deg/C** |
+| what expansion can give | 0.0021 deg |
+| short by | a factor of **365** |
+
+And that 0.0021 already assumes the *entire* length change of a 30 mm ABS-GF
+body appears as a pure differential across a 10 mm arm, with no symmetry
+anywhere. The real figure is far smaller. Thermal expansion is not off by a
+little; it is off by two and a half orders of magnitude.
+
+So the garage door was a good lead and a dead end, and the graph is worth having
+for a second reason: **the room holds ±0.4 C overnight and about 2.5 C over a
+day.** The measurement environment will not be the limitation.
+
+What survives every elimination — target, camera, beam shape, tube mouth,
+temperature — is mechanical creep, which is also the only candidate that fits
+the deceleration measured at 0.36 -> 0.13 -> 0.025 px/min. That is Love's own
+first suggestion: preload relaxing in a mount screwed down for the first time.
+
+The temperature logging stays anyway. It costs nothing, it makes the null result
+quantitative rather than argued, and if `dy` ever steps when the door opens the
+conclusion is wrong and it will show immediately.
+
 ### Auto exposure for the live view, locked for the archive
 
 These are different jobs and they were conflated in one flag. The live view is
