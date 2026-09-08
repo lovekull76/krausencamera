@@ -1124,6 +1124,40 @@ for the method: it is not a property of laser triangulation. The 0.03–0.07 px
 repeatability measured earlier in the week came from this same camera *before*
 the drill. A sound module does not do this.
 
+### The spare camera measures 40 % less tilt, with a sharper instrument
+
+The control the tilt figure needed. Same target, same lamp, same sectors:
+
+| | old camera | spare |
+|---|---|---|
+| tilt amplitude | **0.193 dpt** @ 116 deg | **0.114 dpt** @ 136 deg |
+| fit residual | 0.047 | **0.031** |
+| contrast per sector | 6.6–9.2x | **16–27x** |
+| lens against sensor | ~0.17 deg | ~0.10 deg |
+
+The spare has no aperture sleeve, so its depth of field is narrower, its peaks
+sharper and its contrast three times higher — it measures **less** tilt with a
+**more** sensitive instrument, which makes the comparison stronger than the
+numbers alone. The directions differ by 20 degrees, so these are two units with
+their own tolerances rather than one shared defect.
+
+**Neither is pristine.** 0.114 dpt is still "marginal", matching Love's
+impression that the spare's lens also looks tilted. So some of this is ordinary
+manufacturing tolerance, and the drill is worth roughly the difference rather
+than the whole figure.
+
+> Absolute dioptres are **not** comparable between modules — the spare peaks at
+> 4.4 dpt where the old one peaked at 5.5 on the same target, because the VCM's
+> zero differs per unit. Only the spread between sectors carries over, and even
+> that assumes similar VCM gain.
+
+**A photometric hint in passing.** The spare needs 15 ms where the old camera
+needed 90 for the same mean level, a factor of 6. Removing a 1.5 mm stop from
+f/1.8 should give 3.1. The missing factor of 1.8 is consistent with the old
+camera losing light — which is what a displaced lens does — but it is one
+comparison across two units and two exposures, so it is a hint and not a
+measurement.
+
 ### The module can focus itself, and it is a second opinion worth having
 
 The Camera Module 3 has phase-detect pixels, so it does not need the laser at
