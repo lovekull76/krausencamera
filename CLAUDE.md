@@ -831,6 +831,45 @@ camera-to-laser motion. Both are non-zero; they were treated as either/or.
 hours while the laser sat 14 mm away. The reading with no baseline is the stable
 one, which is the case Love made for it before any of this data existed.
 
+### f·b was wrong by 30 %, and the speckle target proved it
+
+With the speckle sheet at roughly 183 mm — a distance far outside the range the
+four-point fit covered — four estimates that share no assumptions were compared:
+
+| method | distance |
+|---|---|
+| focus model, `801/(5.70 − 0.44) + 19.95` | **172 mm** |
+| naive 1000/dioptres | 175 mm |
+| laser with `f·b = 22050` (b = 10.5, f = 2100) | 175 mm |
+| tape measure | ~183 mm |
+| **laser with the fitted `f·b = 16782`** | **134 mm** |
+
+Three independent routes agree within 3 mm and the fitted laser is 40 mm out.
+Making the laser read 173 mm needs `f·b ≈ 21800`, so `f ≈ 2076` at Love's
+baseline — between the mouth's geometry (2152) and a steel rule (2015).
+
+**So the baseline was never the problem.** `f·b = 16782` was fitted over hours
+while the drift was running, and every distance quoted from it has been about
+30 % low. Pixel measurements are unaffected; millimetre figures were not.
+
+`X_PP` and `C` come from the same fit and are equally suspect, so this is a
+statement about the scale being wrong, not a new calibration.
+
+### The target decides whether a focus sweep means anything
+
+Same sweep, same tool, same lamp:
+
+| target | peak-to-floor |
+|---|---|
+| blank white paper | **1.1x** |
+| random speckle | **21.4x** |
+
+On paper the sweep returned a confident peak that was noise, and both metrics
+agreed on it because both were computed from the same flat frames. On speckle
+the two metrics land 0.20 dioptres apart on a peak worth twenty times the floor.
+The guard that rejects the first and passes the second is the curve's own
+dynamic range, not the agreement between metrics.
+
 ### A grating is the wrong target for tracking motion
 
 Page 2 was built for recalibration and is fine for that. For chasing the drift
