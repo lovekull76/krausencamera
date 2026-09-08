@@ -303,7 +303,14 @@ class FocusTracker:
         """Let the module focus itself, read the distance, restore the lens."""
         from libcamera import controls as _c
         held = self.lens_position
+        # Hold the lamp. The ranging cycle leaves the illumination back under
+        # the viewer count, which is dark when nobody is watching -- and phase
+        # detection needs light like any other focus method. Eleven of twelve
+        # attempts failed before this line existed, and the one that worked was
+        # the one where a browser happened to be open.
+        self._ir.acquire()
         try:
+            time.sleep(0.8)
             picam2.set_controls({"AfMode": _c.AfModeEnum.Auto})
             time.sleep(0.3)
             picam2.set_controls({"AfTrigger": _c.AfTriggerEnum.Start})
@@ -323,6 +330,7 @@ class FocusTracker:
             else:
                 log.warning("pdaf did not converge (state=%s)", state)
         finally:
+            self._ir.release()
             picam2.set_controls({"AfMode": 0, "LensPosition": float(held)})
             time.sleep(1.6)
 

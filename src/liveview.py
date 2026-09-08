@@ -532,6 +532,10 @@ def main() -> int:
                         "about half the measured depth of field)")
     p.add_argument("--snapshot-dir",
                    help="save frame A here after each ranging cycle")
+    p.add_argument("--af-band-y", type=float, default=None,
+                   help="centre of the vertical search window, px below the "
+                        "image centre (default from focus_tracker)")
+    p.add_argument("--af-band-halfwidth", type=float, default=None)
     p.add_argument("--pdaf-every", type=int, default=0,
                    help="run the module's own autofocus as a cross-check "
                         "every N ranging cycles (0 = never). Shares no "
@@ -569,6 +573,9 @@ def main() -> int:
             picam2, lamp, laser, size=MAIN_SIZE,
             interval_s=args.af_interval, laser_exposure_us=args.af_exposure_us,
             threshold_dpt=args.af_threshold, restore_controls=restore,
+            **({"band_y": args.af_band_y} if args.af_band_y is not None else {}),
+            **({"band_halfwidth": args.af_band_halfwidth}
+               if args.af_band_halfwidth is not None else {}),
             initial_lens=args.lens_position,
             snapshot_dir=args.snapshot_dir,
             snapshot_exposure_us=args.snapshot_exposure_us,
