@@ -1065,6 +1065,65 @@ measure of about 183 — while the laser reads 135. The independent witness agre
 with the tape and the laser is 50 mm out, an error accumulated before this
 session and now roughly static, which fits the deceleration.
 
+### The image motion is not rigid, and the camera had been dropped on a drill
+
+Love mentioned, after two days of this, that he had drilled out the camera
+PCB's screw hole before fitting it to the new housing — the bit caught, he lost
+his grip, and the whole module spun with the drill at 2000 rpm with the ribbon
+attached.
+
+That reframes everything, because it predicts something a rigid-body model
+cannot produce, and the data has been refusing a rigid-body model all along.
+
+**Fit the best rigid transform to the whole frame and look at what is left.**
+Fifty patches, first frame against last:
+
+```
+best rigid transform   translation (+1.45, −9.65) px, scale +0.83 %, rotation 0.003 deg
+residual after it      1.15 px mean, 3.06 px max
+correlation noise      ~0.05 px
+```
+
+**Twenty-three times the noise**, and structured: 0.2–0.8 px in the middle,
+2.4–3.1 along the left and right edges. A camera that has moved leaves a
+residual at the noise floor, by definition — there is nothing left to explain.
+A residual that grows towards the field edges is the mapping itself changing.
+
+**And a second sign that no rigid motion can give.** Over the same window the
+mouth's angular size shrank 1.38 % while the speckle's scale grew 0.83 %.
+Opposite signs. An axial move of the camera changes both by different amounts —
+they sit at 40 mm and 185 mm — but in the *same* direction, and so does a change
+in lens-to-sensor spacing.
+
+### Measuring the tilt: sweep once, peak per sector
+
+`src/tilt_probe.py` sweeps `LensPosition` and finds the sharpness peak in eight
+sectors of an annulus, all from the same frames so nothing time-varying can
+masquerade as a tilt. The annulus avoids the speckle target's blank landing disc
+inside and the mouth's cut-off outside.
+
+| sweep | amplitude | direction | residual |
+|---|---|---|---|
+| 4.0–7.6 dpt | 0.152 dpt | 118 deg | 0.066 |
+| 2.0–11.0 dpt | **0.193 dpt** | **116 deg** | 0.047 |
+
+Same direction within 2 degrees, and 4.1 sigma against its own residual. In
+physical terms 0.193 dpt at 185 mm is 6.6 mm of focal plane displacement over a
+63.7 mm field radius — 5.9 degrees object-side, so about **0.17 degrees of lens
+against sensor**, or 19 µm across the sensor's width.
+
+> **Two things this does not establish.** There is no "before" measurement, so
+> 0.17 degrees could be factory tolerance rather than damage; the spare camera
+> is the control, which is why it is worth measuring before it is fitted. And a
+> tilt that is *static* does not drift — the evidence that the mapping is
+> changing is the 1.15 px residual, which is a different observable. They point
+> the same way without being the same measurement.
+
+**The reassuring part**, given that a settling time measured in days is alarming
+for the method: it is not a property of laser triangulation. The 0.03–0.07 px
+repeatability measured earlier in the week came from this same camera *before*
+the drill. A sound module does not do this.
+
 ### The module can focus itself, and it is a second opinion worth having
 
 The Camera Module 3 has phase-detect pixels, so it does not need the laser at
