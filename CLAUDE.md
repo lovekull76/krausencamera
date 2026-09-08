@@ -749,6 +749,50 @@ was entirely the focus, and the series is otherwise clean enough to measure on.
 That the field came out as a pure radial scaling rather than a translation is
 what gave it away — a mount slipping shifts things, it does not magnify them.
 
+### The autofocus loop is damped, not self-reinforcing
+
+Love asked whether focus and distance could spiral: focus is set from a distance
+that is itself focus-dependent through breathing, so each reading changes the
+conditions for the next. The loop is real. Its gain is not.
+
+```
+G = d(focus)/d(distance) · d(distance)/dx · dx · epsilon
+  =    0.1543 dpt/mm     ·   0.4368 mm/px · 260 · epsilon
+  = 17.5 · epsilon
+```
+
+The decisive point is that `epsilon` is the error **in the breathing
+coefficient**, not the breathing itself. A perfect correction makes `dx_ref`
+independent of focus, so the gain is zero and the loop settles in one step; only
+the correction's error is fed back.
+
+| | G | error shrinks per iteration |
+|---|---|---|
+| correction on (0.0068 against 0.0072 measured optically) | **0.007** | 99.3 % |
+| no correction at all | 0.119 | 88 % |
+| correction with the **wrong sign** | 0.238 | 76 % |
+
+Instability needs `epsilon > 5.7 %/dioptre`, eight times the breathing itself.
+Removing the correction entirely, or inverting it, still converges.
+
+**And the loop runs this experiment at every startup**, measuring at 7.10 and
+again at 11.53 after it corrects:
+
+```
+lens  7.10 dpt   dx 258.56 -> 259.62 normalised   d = 92.2 mm
+lens 11.53 dpt   dx 266.10 -> 259.35 normalised   d = 92.3 mm
+```
+
+0.1 mm apart across the whole focus range. Uncorrected the same two readings
+give 92.6 and 89.4 — 2.8 mm apart, and *then* the focus would step again.
+
+So the correction does two things, and the second was not the reason it was
+written: it removes the bias, and it divides the loop gain by seventeen.
+
+The 1.2 dioptre deadband is a further guard. Even at a gain near unity the loop
+would **stop** rather than oscillate, since small corrections are never applied
+— a limit cycle at worst, never a spiral.
+
 ### Measure the creep at fixed focus
 
 The breathing correction `dx / (1 + 0.0068·(lp − 7.7))` is a *model*, with one
