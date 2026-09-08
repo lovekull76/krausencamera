@@ -1034,6 +1034,37 @@ The ring is a third witness agreeing with neither: +52.4 px in x where the paper
 and the dot barely moved in x at all. Three parts, three different motions, and
 the printed structure holding them is the only thing common to all of it.
 
+### Three degrees of freedom, separated at last (2026-09-08, evening)
+
+With the speckle target on the floor and focus locked, all three motions are
+measurable independently over 3.7 hours:
+
+| quantity | measured as | result |
+|---|---|---|
+| camera vs the world | correlation of the speckle | −9.77 px = **0.31 deg** |
+| laser vs the camera | dot minus speckle | +16.98 px = **0.55 deg** |
+| lens vs the mouth | mouth radius, −1.38 % | **0.55 mm along the axis** |
+
+The third is new. A radius that shrinks symmetrically on both sides — right
+−13.4 px, left −10.0 — cannot be a rotation or a lateral shift; it means the
+mouth has moved *away* from the lens. Nothing measured earlier could see an
+axial degree of freedom at all. The parts are separating in depth as well as
+tilting.
+
+**The rate is decelerating**: 2.27 px/h in the first hour of the session, 1.38
+in the last, against 9.93 measured that morning. The first hopeful sign in a
+day of them getting worse.
+
+> But across the day the rate runs 1.5 -> 9.9 -> 1.4, which is not monotonic and
+> not what plain creep does. Either the rig was disturbed in between or there
+> are two processes with different time constants. No explanation is offered
+> here, because none is known.
+
+**PDAF holds at 185.3 mm** over 40 readings, spread 7.7 mm, against a tape
+measure of about 183 — while the laser reads 135. The independent witness agrees
+with the tape and the laser is 50 mm out, an error accumulated before this
+session and now roughly static, which fits the deceleration.
+
 ### The module can focus itself, and it is a second opinion worth having
 
 The Camera Module 3 has phase-detect pixels, so it does not need the laser at
