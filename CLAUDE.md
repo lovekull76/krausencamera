@@ -726,6 +726,41 @@ distant target moved 4.1.
 > between two patches within the same pair; the direction does not. The frame A
 > series settles it, since every frame is now at the same locked 25 ms.
 
+### Frame A must be captured after the focus is applied
+
+Love saw the tube's mouth grow across the first frame A series and read it as
+the movement we were hunting. It was mine. The snapshot was taken inside
+`measure()`, which runs **before** `_apply()` sets the focus — so the first
+frame of every series is at whatever focus the process started with and every
+later one is at the corrected value. Here that was 7.10 against 11.53
+dioptres, and at 0.68 %/dioptre of breathing the first frame is at a different
+magnification from all the rest.
+
+Measured with a patch displacement field, which needs no edges or thresholds:
+
+| | scale change | residual |
+|---|---|---|
+| frame 1 (7.10 dpt) -> frame 7 (11.53) | +0.86 % | 7.1 px |
+| frame 2 (11.53) -> frame 7 (11.53) | **−0.01 %** | **0.8 px** |
+
+**Between correctly focused frames nothing moved at all.** The apparent growth
+was entirely the focus, and the series is otherwise clean enough to measure on.
+
+That the field came out as a pure radial scaling rather than a translation is
+what gave it away — a mount slipping shifts things, it does not magnify them.
+
+### Ambient temperature is a live variable, and was not being logged
+
+The garage door opened twice during the test window, onto cold air. The Pi is
+outside the housing and the lamp is in the stainless lid, so nothing inside
+heats the body appreciably — **it follows the room**. That makes a door opening
+a real disturbance, and overnight cooling a continuous one, which would explain
+a drift that decelerates but never asymptotes.
+
+The SoC temperature now goes into every log line as a stand-in for ambient. It
+is a poor thermometer in absolute terms but it moves with the room, which is all
+the correlation needs.
+
 ### Auto exposure for the live view, locked for the archive
 
 These are different jobs and they were conflated in one flag. The live view is

@@ -34,6 +34,22 @@ log = logging.getLogger(__name__)
 
 REC601 = np.array([0.299, 0.587, 0.114], dtype=np.float32)
 
+
+def soc_temp() -> float:
+    """SoC temperature, as a stand-in for ambient.
+
+    The Pi is outside the housing and the lamp is in the lid, so nothing
+    inside heats it appreciably -- the body follows the room. A garage
+    door opening onto cold air is therefore a real disturbance, and
+    without a temperature alongside each reading there is no way to test
+    whether the drift follows it.
+    """
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp") as f:
+            return int(f.read()) / 1000.0
+    except Exception:
+        return float("nan")
+
 # Laser geometry for this build, from four target positions 2026-09-07.
 # dx = X_PP + K / (d + C), distances to the housing face.
 X_PP, K_LASER, C_LASER = 64.0, 16782.0, -6.38
@@ -240,11 +256,6 @@ class FocusTracker:
                 self._laser.release()
             spot = self._find_dot(lit - dark)
 
-        if self._snap_dir:
-            try:
-                self._snapshot(picam2)
-            except Exception:
-                log.exception("frame A failed")
         picam2.set_controls(dict(self._restore))
         return spot
 
@@ -293,20 +304,20 @@ class FocusTracker:
         if abs(want - self.lens_position) > self._threshold:
             self._picam2.set_controls({"AfMode": 0, "LensPosition": float(want)})
             log.info("range %.1f mm (dx=%.2f at %.2f dpt -> %.2f normalised, "
-                     "dy=%.2f, spread %.1f px, peak %.0f) -> focus %.2f dpt, "
-                     "moved %+.2f",
+                     "dy=%.2f, spread %.1f px, peak %.0f, soc %.1fC) -> "
+                     "focus %.2f dpt, moved %+.2f",
                      d, spot["dx"], self.lens_position,
                      normalise_dx(spot["dx"], self.lens_position),
-                     spot["dy"], spot["spread"], spot["peak"],
+                     spot["dy"], spot["spread"], spot["peak"], soc_temp(),
                      want, want - self.lens_position)
             self.lens_position = want
         else:
             log.info("range %.1f mm (dx=%.2f at %.2f dpt -> %.2f normalised, "
-                     "dy=%.2f, spread %.1f px, peak %.0f) -> focus %.2f dpt, "
-                     "within %.1f, holding",
+                     "dy=%.2f, spread %.1f px, peak %.0f, soc %.1fC) -> "
+                     "focus %.2f dpt, within %.1f, holding",
                      d, spot["dx"], self.lens_position,
                      normalise_dx(spot["dx"], self.lens_position),
-                     spot["dy"], spot["spread"], spot["peak"],
+                     spot["dy"], spot["spread"], spot["peak"], soc_temp(),
                      want, self._threshold)
 
     def _run(self) -> None:
@@ -317,6 +328,17 @@ class FocusTracker:
                     log.warning("laser range: no spot in the band")
                 else:
                     self._apply(spot)
+                    # After _apply, never before: the focus it just set changes
+                    # the magnification by 0.68 %/dioptre, so a frame captured
+                    # first is at a different scale from every later one. That
+                    # made the first frame of a series look as though the tube's
+                    # mouth had grown, which is exactly the kind of movement
+                    # these frames exist to detect.
+                    if self._snap_dir:
+                        try:
+                            self._snapshot(self._picam2)
+                        except Exception:
+                            log.exception("frame A failed")
             except Exception:
                 log.exception("laser range failed")
             self._stop.wait(self._interval)
