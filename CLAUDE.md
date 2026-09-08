@@ -831,6 +831,33 @@ camera-to-laser motion. Both are non-zero; they were treated as either/or.
 hours while the laser sat 14 mm away. The reading with no baseline is the stable
 one, which is the case Love made for it before any of this data existed.
 
+### A grating is the wrong target for tracking motion
+
+Page 2 was built for recalibration and is fine for that. For chasing the drift
+it fails twice:
+
+- **Vertical bars carry no vertical information.** The correlation can localise
+  x well and y hardly at all — and the drift is currently almost purely
+  vertical, so it would measure the one axis that is not moving.
+- **A periodic pattern is ambiguous.** The correlation peaks repeat every
+  period. At 1 mm and about 20 px/mm that is 20 px, and the drift is already
+  24 px, so a displacement can be read a whole period wrong and look healthy.
+
+Page 3 is a **random speckle**, the pattern digital image correlation uses for
+exactly this problem: broad spatial frequency content, no repeat to confuse a
+correlator, and equal in both axes. Dots are 0.6-1.2 mm, which is 12-24 px at
+this working distance, at 42 % coverage, with a 60 mm blank disc for the laser
+to land in — larger than page 2's 44 mm because the dot sits 16 mm off axis and
+is currently moving several millimetres a day.
+
+> **On darkening the target around the mouth**, which Love suggested for
+> contrast against stray light in the tube: the edge's position is set by the
+> tube's geometry and its softness by the illumination falloff, not by the
+> target's reflectance. Darkening there removes light without sharpening
+> anything. What actually helps is texture running right out to the edge, so the
+> *target* is trackable at that radius — which is what makes the parallax
+> between a housing-fixed edge and a world-fixed target measurable at all.
+
 ### Measure the target's own features, not the light falling on it
 
 Two of my measurements of "the target" were worthless, and Love caught both by

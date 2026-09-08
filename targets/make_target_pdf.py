@@ -33,6 +33,19 @@ GAP, TICK_H, LABEL = 2.0, 6.0, 9.0
 FIELD_W, FIELD_H, FIELD_PERIOD = 200.0, 150.0, 1.0
 DISC_R = 22.0
 
+# Page 3. A grating is the wrong tool for tracking motion: vertical bars carry
+# no vertical information, and a periodic pattern gives a correlation peak every
+# period -- 1 mm is 20 px at this working distance, and the drift being chased is
+# already 24 px, so a displacement can be read a whole period wrong and look
+# perfectly healthy. A random pattern has broad spatial frequency content, no
+# repeat to be confused by, and works equally in both axes. This is the speckle
+# used in digital image correlation, for the same reason.
+SPECKLE_W, SPECKLE_H = 240.0, 170.0
+SPECKLE_R = (0.30, 0.60)      # dot radii, mm -> 12-24 px at 20 px/mm
+SPECKLE_COVER = 0.42
+SPECKLE_DISC_R = 30.0         # blank landing zone, larger than page 2's: the dot
+                              # sits 16 mm off axis and is currently moving
+
 
 def main(path="targets/focus-target-A4.pdf"):
     ops = ["0 0 0 rg"]
@@ -95,10 +108,44 @@ def main(path="targets/focus-target-A4.pdf"):
          f"blank disc. Print at 100 %, no fit to page.", 9.0)
     page2 = "\n".join(ops).encode("latin-1")
 
+    # --- page 3: random speckle with a blank landing disc -----------------
+    import random
+    rnd = random.Random(20260908)
+    ops = ["0 0 0 rg"]
+    sx, sy = (PAGE_W_MM - SPECKLE_W) / 2.0, 22.0
+    cx, cy = sx + SPECKLE_W / 2.0, sy + SPECKLE_H / 2.0
+    area = SPECKLE_W * SPECKLE_H
+    placed = covered = 0
+    while covered < SPECKLE_COVER * area and placed < 60000:
+        x = sx + rnd.random() * SPECKLE_W
+        y = sy + rnd.random() * SPECKLE_H
+        r = rnd.uniform(*SPECKLE_R)
+        placed += 1
+        if (x - cx) ** 2 + (y - cy) ** 2 < (SPECKLE_DISC_R + r) ** 2:
+            continue          # keep the landing zone clean
+        # A circle as four Bezier arcs; k is the standard 4/3*(sqrt(2)-1).
+        k = r * 0.5523
+        X, Y = x * MM, (PAGE_H_MM - y) * MM
+        R, K = r * MM, k * MM
+        ops.append(f"{X - R:.3f} {Y:.3f} m")
+        ops.append(f"{X - R:.3f} {Y + K:.3f} {X - K:.3f} {Y + R:.3f} {X:.3f} {Y + R:.3f} c")
+        ops.append(f"{X + K:.3f} {Y + R:.3f} {X + R:.3f} {Y + K:.3f} {X + R:.3f} {Y:.3f} c")
+        ops.append(f"{X + R:.3f} {Y - K:.3f} {X + K:.3f} {Y - R:.3f} {X:.3f} {Y - R:.3f} c")
+        ops.append(f"{X - K:.3f} {Y - R:.3f} {X - R:.3f} {Y - K:.3f} {X - R:.3f} {Y:.3f} c f")
+        covered += 3.14159 * r * r
+    for dx_, dy_ in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+        rect(cx + dx_ * (SPECKLE_DISC_R + 4.0) - 0.5,
+             cy + dy_ * (SPECKLE_DISC_R + 4.0) - 0.5, 1.0, 1.0)
+    text(cx, sy - 6.0,
+         f"Drift target - random speckle for image correlation. Land the laser "
+         f"dot inside the {2*SPECKLE_DISC_R:.0f} mm blank disc. Print at 100 %.", 9.0)
+    page3 = "\n".join(ops).encode("latin-1")
+    print(f"  sida 3: {placed} forsok, {covered/area*100:.0f} % tackning")
+
     def page(contents_obj):
         return (f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
                 f"{PAGE_W_MM*MM:.2f} {PAGE_H_MM*MM:.2f}] /Resources << /Font "
-                f"<< /F1 7 0 R >> >> /Contents {contents_obj} 0 R >>").encode()
+                f"<< /F1 9 0 R >> >> /Contents {contents_obj} 0 R >>").encode()
 
     def content(stream):
         return (b"<< /Length " + str(len(stream)).encode()
@@ -106,9 +153,10 @@ def main(path="targets/focus-target-A4.pdf"):
 
     objs = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>",
+        b"<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R] /Count 3 >>",
         page(4), content(page1),
         page(6), content(page2),
+        page(8), content(page3),
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
     out = bytearray(b"%PDF-1.4\n")
