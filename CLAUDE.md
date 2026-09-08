@@ -641,34 +641,60 @@ So the constraint on viewer adjustments stands: the live view may be tuned to
 taste, and the measurement cycle sets its own known state before capturing.
 Same discipline as `FocusTracker`, for a different reason than first recorded.
 
-### dy is drifting, and the night should say why
+### The laser barrel is rotating in its bore (2026-09-08)
 
-`dy` should be constant — the laser sits in the camera's plane by construction,
-and the measured variation with distance is only 0.06 px/mm. Over one evening it
-went 110 -> 118 px while the distance read 108.3 -> 100.7 mm. The distance change
-accounts for about 0.4 px of that, so the rest is real geometry moving.
+`dy` should be constant — the laser sits in the camera's plane by construction.
+Over one evening it went 110 -> 118 px, and I predicted from 34 minutes of data
+that it would asymptote near 128. **It did not.** After 7.5 hours it stood at
+141, having moved 21 px in `dy` and 21.6 px in `dx`, and it was still moving at
+1.5 px/h. Fitting a decay to half an hour and extrapolating to a settling point
+was overreach; the deceleration was real but it flattened into a steady creep
+rather than stopping.
 
-At 16 px/mm image scale, 8 px is about 0.5 mm of lateral movement at the target,
-or 5 mrad — **0.3 degrees**. A single angular drift of that size, with components
-in both axes, explains the dx change as well, so it need not be two faults.
+The apparent distance fell 100.7 -> 93.0 mm over the same period. It had not.
+Three independent checks say the target never moved:
 
-Candidates eliminated by measurement or by Love:
+| | measured | if the target really came 7.7 mm closer |
+|---|---|---|
+| image scale, by correlation | **1.000** | 1.083 |
+| scene shift, vertical | **0 px** | would track the dot |
+| sharpness at fixed focus | 7.8 -> **7.9** | visibly softer |
 
-- **the tube's mouth** — not in the geometry at all. The measurement is the dot
-  against the image, which is exactly why that pairing was chosen.
-- **the target moving** — would show in dx, and could only move dy through the
-  0.06 px/mm distance term. Nowhere near enough.
-- **LED heating the housing** — the lamp ran at 21.6 % duty, not the hours
-  assumed, and it is mounted in the stainless lid with little thermal contact
-  with the camera body.
-- **the Pi's own heat** — the Pi is outside the housing.
+So the laser moved relative to the camera, and the 7.7 mm was entirely an
+artefact of that.
 
-Leaving Love's hypothesis, which fits best: **the camera board is screwed down
-in the new housing and was not in the old one**, so this is preload relaxing.
-That predicts an asymptote rather than a wander, and it should not come back.
+**And the path is a circle.** Against 423 points:
 
-Running overnight with no viewer, so the lamp stays off and the thermal
-environment is as constant as it gets. `dy` is logged every 60 s.
+```
+straight line   rms 0.719 px
+circle          centre (220, 162), radius 46.6 px, rms 0.105 px
+```
+
+Seven times better, and 0.105 px is close to the measurement noise. A bending
+mount gives a line. A circle means the **barrel is rotating in its bore** and
+the beam is not on the barrel's mechanical axis — an ordinary tolerance for a
+diode module, here 46.6 px at f = 1600, or **1.67 degrees**. It had turned
+**37 degrees** overnight.
+
+**Consequences.**
+
+- Rotating the barrel sweeps the dot over a circle 93 px across, which is 5.8 mm
+  at the target and about 58 mm of apparent distance. The rotational position of
+  the laser is therefore a calibration parameter, and nothing currently fixes it.
+- The four-point calibration was taken in order 180, 130, 108, 80 mm, and its
+  `dy` rose monotonically 102.5 -> 108.5. That was read as variation with
+  distance. It may equally be variation with *time*, which would mean the `dx`
+  values are contaminated too. **Recalibrate after the barrel is locked**, and
+  not before.
+- This is very likely the real source of the residuals blamed earlier on the
+  patterned target. The pattern effect was separately measured at 1.08 px and is
+  real, but it is not the whole story.
+
+**A prediction worth checking.** The dot currently sits at (262.5, 141.2), which
+is 26 degrees before the circle's rightmost point. If this is rotation, `dx`
+will rise to about **266.6 px and then start falling**, while `dy` keeps rising
+— the apparent distance will reverse and start increasing. A drift model cannot
+produce that. At the current 1.8 deg/h it is roughly 14 hours away.
 
 ### Auto exposure for the live view, locked for the archive
 
