@@ -793,6 +793,48 @@ The 1.2 dioptre deadband is a further guard. Even at a gain near unity the loop
 would **stop** rather than oscillate, since small corrections are never applied
 — a limit cycle at worst, never a spiral.
 
+### The module can focus itself, and it is a second opinion worth having
+
+The Camera Module 3 has phase-detect pixels, so it does not need the laser at
+all. Tested under the 850 nm lamp: it converges every time, in about 4 s, from
+either end of its travel, repeatable to 0.25 dioptres.
+
+It lands at 9.9 dpt where the laser says 11.53 — **1.6 dioptres apart**, which
+is 12 mm of distance.
+
+> **Two reasons that does not convict the laser, both Love's.** The aperture was
+> fitted to widen the depth of field, and the measured 64 mm at the 80 %
+> criterion is three dioptres wide — so a contrast sweep *cannot* localise focus
+> better than about a dioptre, and the 1.1x peak-to-floor it returned here is
+> exactly what that predicts. The sweep's apparent peak at 9.7 is not evidence.
+> And an external stop can bias phase detection outright: PDAF compares light
+> from opposite halves of the pupil, so a stop that is even slightly decentred
+> vignettes the two halves unequally and puts the null somewhere other than true
+> focus.
+
+What survives is a pattern a constant bias cannot produce:
+
+| | distance |
+|---|---|
+| yesterday: laser *and* contrast sweep on the patterned target | 108.6 mm |
+| today: PDAF | 104.6 mm |
+| today: laser | **92.2 mm** |
+
+PDAF today lands where the laser and the sweep agreed yesterday. Today's laser
+is the outlier.
+
+**As the measurement it is useless.** 0.112 dpt/mm at 105 mm against a 0.25 dpt
+repeatability is 2.2 mm, where the laser gives 0.031 — seventy times worse. And
+the aperture makes that structural rather than incidental: it was fitted so that
+focus need not be precise, which is the same property as focus being a poor
+ranger. You cannot have both.
+
+**As an independent witness it is exactly what was missing.** It shares no
+failure mode with the laser — no baseline, no centroid, no beam — so it is blind
+to everything that has gone wrong this week. `--pdaf-every N` runs it every N
+cycles, logs the implied distance beside the laser's, flags a gap over 4 mm, and
+puts the lens back where it was.
+
 ### Measure the creep at fixed focus
 
 The breathing correction `dx / (1 + 0.0068·(lp − 7.7))` is a *model*, with one

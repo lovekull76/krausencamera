@@ -96,6 +96,22 @@ def focus_for(distance_mm: float) -> float:
     return F_OFF + F_K / (distance_mm + F_C)
 
 
+def distance_from_focus(dioptres: float) -> float:
+    """The focus model inverted -- a distance from a lens position.
+
+    Blunt: 0.112 dpt/mm at 105 mm, so the module's own phase-detect autofocus,
+    repeatable to 0.25 dpt here, resolves about 2.2 mm against the laser's 0.03.
+    Useless as the measurement, and the aperture makes that structural rather
+    than incidental -- it was fitted to widen the depth of field so that focus
+    need not be precise, which is the same thing as making focus a poor ranger.
+
+    Valuable as an independent witness, though. It shares no failure mode with
+    the laser: no baseline, no centroid, no beam. When the two disagree by more
+    than a couple of millimetres, something has moved that should not have.
+    """
+    return F_K / (dioptres - F_OFF) - F_C
+
+
 class FocusTracker:
     """Periodic laser ranging, with the focus following at a threshold."""
 
@@ -106,7 +122,7 @@ class FocusTracker:
                  min_dx=DX_MIN, max_dx=DX_MAX, min_peak=20.0,
                  restore_controls=None, settle_s=1.4, initial_lens=7.1,
                  snapshot_dir=None, snapshot_exposure_us=25000,
-                 snapshot_interval_s=300.0):
+                 snapshot_interval_s=300.0, pdaf_every=0):
         self._picam2 = picam2
         self._ir = illumination
         self._laser = laser
@@ -149,6 +165,11 @@ class FocusTracker:
         # the archive's cadence the moment the archive was added.
         self._snap_interval = snapshot_interval_s
         self._last_snap = 0.0
+        # Phase-detect autofocus, run every N cycles as a cross-check and
+        # then put the lens back exactly where it was.
+        self._pdaf_every = pdaf_every
+        self._cycles = 0
+        self.pdaf_mm = None
         if snapshot_dir:
             os.makedirs(snapshot_dir, exist_ok=True)
 
@@ -176,6 +197,7 @@ class FocusTracker:
             "spread_px": self.spread_px,
             "age_s": None if self.updated_at is None else round(time.time() - self.updated_at),
             "busy": self.busy,
+            "pdaf_mm": None if self.pdaf_mm is None else round(self.pdaf_mm, 1),
         }
 
     # -- measurement -------------------------------------------------------
@@ -244,6 +266,11 @@ class FocusTracker:
         # the archive's cadence the moment the archive was added.
         self._snap_interval = snapshot_interval_s
         self._last_snap = 0.0
+        # Phase-detect autofocus, run every N cycles as a cross-check and
+        # then put the lens back exactly where it was.
+        self._pdaf_every = pdaf_every
+        self._cycles = 0
+        self.pdaf_mm = None
         if snapshot_dir:
             os.makedirs(snapshot_dir, exist_ok=True)
 
@@ -271,6 +298,33 @@ class FocusTracker:
 
         picam2.set_controls(dict(self._restore))
         return spot
+
+    def _pdaf(self, picam2) -> None:
+        """Let the module focus itself, read the distance, restore the lens."""
+        from libcamera import controls as _c
+        held = self.lens_position
+        try:
+            picam2.set_controls({"AfMode": _c.AfModeEnum.Auto})
+            time.sleep(0.3)
+            picam2.set_controls({"AfTrigger": _c.AfTriggerEnum.Start})
+            t0 = time.monotonic()
+            state, lp = None, None
+            while time.monotonic() - t0 < 8.0:
+                md = picam2.capture_metadata()
+                state, lp = md.get("AfState"), md.get("LensPosition")
+                if state in (2, 3):
+                    break
+            if state == 2 and lp:
+                self.pdaf_mm = distance_from_focus(lp)
+                gap = self.pdaf_mm - (self.distance_mm or float("nan"))
+                log.info("pdaf: %.2f dpt -> %.1f mm   laser says %.1f   gap %+.1f mm%s",
+                         lp, self.pdaf_mm, self.distance_mm or float("nan"), gap,
+                         "   DISAGREE" if abs(gap) > 4.0 else "")
+            else:
+                log.warning("pdaf did not converge (state=%s)", state)
+        finally:
+            picam2.set_controls({"AfMode": 0, "LensPosition": float(held)})
+            time.sleep(1.6)
 
     def _snapshot(self, picam2) -> None:
         """Frame A: illumination on, laser off, exposure locked."""
@@ -347,6 +401,12 @@ class FocusTracker:
                     # made the first frame of a series look as though the tube's
                     # mouth had grown, which is exactly the kind of movement
                     # these frames exist to detect.
+                    self._cycles += 1
+                    if self._pdaf_every and self._cycles % self._pdaf_every == 0:
+                        try:
+                            self._pdaf(self._picam2)
+                        except Exception:
+                            log.exception("pdaf cross-check failed")
                     now = time.monotonic()
                     if self._snap_dir and now - self._last_snap >= self._snap_interval:
                         self._last_snap = now

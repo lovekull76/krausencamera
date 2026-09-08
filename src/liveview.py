@@ -532,6 +532,10 @@ def main() -> int:
                         "about half the measured depth of field)")
     p.add_argument("--snapshot-dir",
                    help="save frame A here after each ranging cycle")
+    p.add_argument("--pdaf-every", type=int, default=0,
+                   help="run the module's own autofocus as a cross-check "
+                        "every N ranging cycles (0 = never). Shares no "
+                        "failure mode with the laser.")
     p.add_argument("--snapshot-interval", type=float, default=300.0,
                    help="seconds between frame A captures, independent of "
                         "--af-interval (default 300)")
@@ -569,6 +573,7 @@ def main() -> int:
             snapshot_dir=args.snapshot_dir,
             snapshot_exposure_us=args.snapshot_exposure_us,
             snapshot_interval_s=args.snapshot_interval,
+            pdaf_every=args.pdaf_every,
         )
         Handler.tracker = tracker
         tracker.start()
