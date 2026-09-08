@@ -831,6 +831,62 @@ camera-to-laser motion. Both are non-zero; they were treated as either/or.
 hours while the laser sat 14 mm away. The reading with no baseline is the stable
 one, which is the case Love made for it before any of this data existed.
 
+### Measure the target's own features, not the light falling on it
+
+Two of my measurements of "the target" were worthless, and Love caught both by
+looking at the picture.
+
+The first was a centroid inside a fixed mask. On a near-featureless white paper
+the centroid is dominated by the mask's own geometry, so it reported 2.3 px
+while the paper's creases were visibly travelling with the ring. A fixed mask on
+a moving pattern always under-reports, and with nothing else to weight it, it
+under-reports almost completely.
+
+The second placed the annulus at r = 500..1100 without checking where the mouth's
+edge actually was. The radial profile puts the steepest falloff at **r = 1022**,
+so the ring had been measured well inside the disc, on an interior illumination
+gradient. It reported 9 px where the edge had moved 57.
+
+What works is high-passing the frame to strip the lamp's smooth gradient and
+correlating what remains — the paper's creases are real image structure, and
+they are the only thing in the frame that is genuinely *on* the target.
+
+```
+                        dx        dy
+paper (creases)       -1.3     -24.8
+laser dot             +2.2     +24.0
+mouth (the ring)     +52.4     +23.3
+```
+
+**Paper and dot move equally and oppositely in y**, which no earlier measurement
+had shown.
+
+### The geometry checks out, and the focal length does not
+
+The mouth is 38 mm across at 40 mm, a half-angle of 25.4 degrees. For the edge
+to land at r = 1022 needs **f ≈ 2150 px**, and a steel rule in frame gave ~2015.
+Neither agrees with the 1600 implied by `f·b = 16782` at b = 10.5 mm — which
+would put the baseline nearer 8 mm. The four-point fit was taken over hours
+while this drift was running, so it is the suspect.
+
+### Dot minus paper is the only figure that isolates the laser
+
+```
+dot − paper = +48.8 px = 1.33 degrees over four hours at f = 2100
+```
+
+Twice what was recorded an hour earlier, because that calculation assumed the
+paper was stationary and it is not.
+
+**And it rules out the TC joint on its own.** Love's own argument: if the clamp
+moves, camera and laser travel together, so the dot's image position is
+invariant while the paper and the ring shift — the same invariance that makes
+triangulation indifferent to how the housing points. The dot is not invariant.
+
+The ring is a third witness agreeing with neither: +52.4 px in x where the paper
+and the dot barely moved in x at all. Three parts, three different motions, and
+the printed structure holding them is the only thing common to all of it.
+
 ### The module can focus itself, and it is a second opinion worth having
 
 The Camera Module 3 has phase-detect pixels, so it does not need the laser at
