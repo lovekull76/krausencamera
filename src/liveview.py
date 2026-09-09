@@ -423,6 +423,19 @@ class Server(socketserver.ThreadingMixIn, server.HTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
+    def handle_error(self, request, client_address):
+        """A browser closing a stream is not an error worth a traceback.
+
+        The default prints the whole stack for every tab that goes away, which
+        buries the measurement lines in a log that gets read closely.
+        """
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionResetError, BrokenPipeError, TimeoutError)):
+            log.debug("viewer disconnected: %s (%s)", client_address,
+                      type(exc).__name__)
+            return
+        super().handle_error(request, client_address)
+
 
 def lores_size(args) -> tuple[int, int]:
     w, h = (int(v) for v in args.lores.lower().split("x"))
