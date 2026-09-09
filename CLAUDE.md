@@ -412,19 +412,27 @@ which turns the image counter-clockwise.
 | 0 deg | 132 | 132 | 132 |
 | 90 deg | 142 | 132 | 42 |
 | 180 deg | 141 | 132 | 312 |
+| 270 deg | 138 | 132 | 222 |
 
-**The off-centring is 88 % the camera's.** Six equations, four unknowns,
-residual 3.3 px:
+It holds inside a ten degree band while a dummy-fixed error would have swept the
+whole circle.
+
+**The off-centring is 88 % the camera's.** Four positions, eight equations
+against four unknowns, residual 2.5 px rms:
 
 | | | at the mouth |
 |---|---|---|
-| `a0`, camera off-axis in its housing | 144 px | **3.38 mm** |
-| `m`, mouth off-axis in the dummy | 20 px | 0.48 mm |
+| `a0`, camera off-axis in its housing | 142 px | **3.35 mm** |
+| `m`, mouth off-axis in the dummy | 19 px | 0.45 mm |
 
-Predicting the 180 degree position from the 0 and 90 degree pair — a real
-prediction, not a fit to itself — lands within 11.2 px against the circle fit's
-own 1.7-6.4 px scatter. The mouth's radius holds at 832.0 / 830.4 / 835.3 px, so
-nothing moved axially during the hour.
+Per position the model misses by 2.7, 4.0, 4.3 and 3.1 px, which is the circle
+fit's own scatter — it is fitted to within the measurement's noise. The three
+position solution gave 144 and 20 px, so adding the fourth barely moved it.
+
+Predicting the 180 degree position from the 0 and 90 degree pair alone — a real
+prediction rather than a fit to itself — landed within 11.2 px. And the mouth's
+radius holds at 831.9 +/- 2.4 px, 0.29 %, so nothing moved axially across the
+ninety minutes.
 
 **So it is a CAD fix.** Move the board's seat so the optical axis meets the
 tube's, and both the lopsided crop and the one-sided vignetting go with it. The
