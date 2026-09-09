@@ -329,9 +329,9 @@ class FocusTracker:
                     # a focus model fitted to a camera that turned out to be
                     # damaged, and are void until it is refitted. Repeatability
                     # of the raw value is what a drift run needs anyway.
-                    log.info("pdaf: %.3f dpt   (= %.0f mm via the VOID focus "
-                             "model -- track the dioptre, not this)",
-                             lp, self.pdaf_mm)
+                    log.info("pdaf: %.3f dpt   soc %.1fC   (= %.0f mm via the "
+                             "VOID focus model -- track the dioptre, not this)",
+                             lp, soc_temp(), self.pdaf_mm)
                 else:
                     gap = self.pdaf_mm - self.distance_mm
                     log.info("pdaf: %.3f dpt -> %.1f mm   laser says %.1f   "
@@ -359,8 +359,12 @@ class FocusTracker:
             stamp = time.strftime("%Y%m%d-%H%M%S")
             path = os.path.join(self._snap_dir, f"A-{stamp}.jpg")
             Image.fromarray(a[:, :, :3][:, :, ::-1]).save(path, quality=88)
-            log.info("frame A -> %s (%.0f mean)", os.path.basename(path),
-                     a[:, :, :3].mean())
+            # Temperature on every frame, not only on the ranging line. The
+            # first laser-less run had none, so an overnight burst in the drift
+            # could not be tested against the room cooling -- which is the first
+            # thing you would want to check.
+            log.info("frame A -> %s (%.0f mean, soc %.1fC)",
+                     os.path.basename(path), a[:, :, :3].mean(), soc_temp())
 
             # And one with the laser lit as well, at the same exposure so the
             # two overlay exactly. Not a measurement -- the dot blooms badly at
