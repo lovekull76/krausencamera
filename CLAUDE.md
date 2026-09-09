@@ -434,10 +434,60 @@ prediction rather than a fit to itself — landed within 11.2 px. And the mouth'
 radius holds at 831.9 +/- 2.4 px, 0.29 %, so nothing moved axially across the
 ninety minutes.
 
-**So it is a CAD fix.** Move the board's seat so the optical axis meets the
-tube's, and both the lopsided crop and the one-sided vignetting go with it. The
-dummy is concentric enough to leave alone, and the camera's own 0.11-0.13 dpt of
-tilt matched the factory-fresh figure of 0.114 — ordinary tolerance.
+### It is 3.6 degrees of pointing, not 3.4 mm of offset
+
+Love said 3+ mm of lateral offset was implausible, and asked whether an angular
+error could be behind it. It can, and it is. **The mouth alone cannot tell them
+apart** — a camera displaced sideways and one pointing off-axis shift its image
+by the same amount. Parallax separates them, and the speckle target's blank
+landing disc had been sitting in every frame as a world-fixed reference at the
+target's distance while only the mouth was being used.
+
+| | near/far ratio |
+|---|---|
+| measured | **1.24** |
+| pure lateral offset predicts | 4.63 |
+| pure angular error predicts | 1.00 |
+
+Solving both terms: **3.60 degrees of pointing** and 0.84 mm of displacement.
+
+**And that collapses the tilt into the same fault.** A camera pointing 3.6
+degrees off-axis sees a perpendicular target as oblique: 64 mm of field radius
+gives 4.0 mm of distance across the field, which is 0.118 dpt at 185 mm.
+Decomposing the measured tilt over the four positions:
+
+| | |
+|---|---|
+| constant, camera-fixed | 0.1247 dpt at 139 deg |
+| rotating, world-fixed — **the target's own tilt** | 0.0116 dpt = **0.36 deg** |
+| residual | 0.0059 dpt |
+
+Predicted 0.1176 against measured 0.1247, six per cent apart from two
+independent measurements. **Nothing is left for a lens-against-sensor tilt** —
+at most 0.007 dpt, inside the residual.
+
+Love also asked whether the bottom was assumed perpendicular. It was, and it is
+not: 0.36 degrees, now measured. It does not affect the mouth, whose boundary is
+the rim's own projection and so is independent of what lies behind it.
+
+| quantity | value | where it lives |
+|---|---|---|
+| **camera points off-axis** | **3.60 deg** | the housing's board seat |
+| camera displaced sideways | 0.84 mm | the housing's board seat |
+| target tilt | 0.36 deg | the floor |
+| mouth off-centre | 0.45 mm | the dummy, negligible |
+| **lens against sensor** | **<= 0.007 dpt** | nothing measurable |
+
+**So it is one CAD fix**, and the lopsided crop and the "tilt" are the same fault
+seen twice.
+
+> **Retracted: "the drill doubled the tilt."** The 0.193 dpt on the damaged
+> camera and 0.114 on the fresh one were measured in *different housings*, and
+> the housing's pointing error dominates that figure. The drill's damage stands
+> on its other evidence — the light loss and the field-dependent residual — but
+> the tilt comparison was measuring the housings. Separating a pointing error
+> from a lens tilt needs the same camera in two housings, or a target known to
+> be square; the rotation test cannot do it, because both are camera-fixed.
 
 > **The eight-wedge fit is what made this measurable.** Measuring the mouth from
 > left and right alone gave +28 px in x and the conclusion that centring was
