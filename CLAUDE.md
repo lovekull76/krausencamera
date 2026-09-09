@@ -397,6 +397,48 @@ fit's rms is 1.52 px, so treat it as indicative.
 > two days per iteration is a lot when iterating — but the comparison to make
 > is "does it reach its asymptote sooner", not "does it drift less".
 
+## The rotation study: the camera sits 3.4 mm off the tube's axis
+
+Rotating the housing in its dummy separates an error that belongs to the camera
+from one that belongs to the dummy. In image coordinates the observed mouth
+offset is `R(-theta)·m - a0`, so the part that **rotates** is the dummy's and the
+part that stays **constant** is the camera's. Love rotates the camera clockwise,
+which turns the image counter-clockwise.
+
+**The tilt is the camera's**, decisively:
+
+| housing | tilt direction | camera-fixed predicts | dummy-fixed predicts |
+|---|---|---|---|
+| 0 deg | 132 | 132 | 132 |
+| 90 deg | 142 | 132 | 42 |
+| 180 deg | 141 | 132 | 312 |
+
+**The off-centring is 88 % the camera's.** Six equations, four unknowns,
+residual 3.3 px:
+
+| | | at the mouth |
+|---|---|---|
+| `a0`, camera off-axis in its housing | 144 px | **3.38 mm** |
+| `m`, mouth off-axis in the dummy | 20 px | 0.48 mm |
+
+Predicting the 180 degree position from the 0 and 90 degree pair — a real
+prediction, not a fit to itself — lands within 11.2 px against the circle fit's
+own 1.7-6.4 px scatter. The mouth's radius holds at 832.0 / 830.4 / 835.3 px, so
+nothing moved axially during the hour.
+
+**So it is a CAD fix.** Move the board's seat so the optical axis meets the
+tube's, and both the lopsided crop and the one-sided vignetting go with it. The
+dummy is concentric enough to leave alone, and the camera's own 0.11-0.13 dpt of
+tilt matched the factory-fresh figure of 0.114 — ordinary tolerance.
+
+> **The eight-wedge fit is what made this measurable.** Measuring the mouth from
+> left and right alone gave +28 px in x and the conclusion that centring was
+> fine. Love said it looked wrong. It was: the offset is almost entirely
+> vertical, +144 px, and the mouth's radius exceeds half the frame height so the
+> up and down wedges never reach it. Fitting a circle through the six directions
+> that do reach recovers both axes. **The axis I could measure was the axis the
+> error was not in.**
+
 ## ⚠️ The 2026-09-07 calibration is void
 
 The camera module used for it had been damaged the day before — the drill caught

@@ -1,0 +1,62 @@
+sektorer (grader, 0 = hoger, medurs i bild): 0 45 90 135 180 225 270 315
+pixlar per sektor: 132k 126k 66k 126k 132k 126k 67k 126k
+
+   dpt        0       45       90      135      180      225      270      315
+  2.00     45.3     47.2     55.2     53.7     54.4     53.5     65.9     40.3
+  2.30     55.7     57.0     67.4     65.7     66.8     65.8     82.0     49.1
+  2.60     73.0     72.5     85.6     83.3     85.4     84.2    107.4     64.3
+  2.90     98.8     95.1    110.3    105.6    109.8    109.0    141.0     85.3
+  3.20    136.9    127.6    149.1    139.6    148.7    148.8    195.3    119.3
+  3.50    177.0    161.9    192.7    181.1    196.1    199.4    256.6    157.0
+  3.80    205.1    187.6    226.2    214.6    235.7    241.1    301.2    183.9
+  4.10    220.1    209.2    256.3    245.7    270.0    273.1    327.6    195.6
+  4.40    214.7    212.4    266.4    261.0    282.5    282.1    318.8    190.4
+  4.70    184.9    192.8    245.4    249.2    263.4    258.1    277.6    165.1
+  5.00    142.9    156.4    206.3    210.8    216.7    207.4    216.5    128.1
+  5.30    106.1    119.7    160.6    167.0    168.8    158.4    162.6     96.1
+  5.60     74.1     85.2    115.6    119.9    119.7    113.2    113.7     68.9
+  5.90     54.3     61.9     84.0     87.7     87.6     82.7     81.9     50.8
+  6.20     39.4     44.7     60.1     62.5     61.5     58.7     57.4     37.5
+  6.50     30.7     34.0     43.9     45.1     44.3     43.8     42.1     29.3
+  6.80     25.8     28.0     34.0     35.1     33.8     34.3     32.9     24.5
+  7.10     22.3     23.8     27.7     27.4     26.4     27.1     26.2     21.3
+  7.40     20.4     21.2     23.6     22.8     22.0     22.6     22.1     19.2
+  7.70     18.7     19.2     20.7     19.5     18.7     19.5     19.5     17.9
+  8.00     17.2     17.8     18.8     17.3     16.7     17.3     17.4     16.6
+  8.30     16.4     17.0     17.2     16.1     15.6     16.0     16.3     15.9
+  8.60     15.7     16.0     16.1     14.8     14.3     14.9     15.2     15.2
+  8.90     14.9     15.1     15.6     14.1     13.5     14.1     14.3     14.7
+  9.20     14.3     14.6     14.6     13.4     12.8     13.3     13.7     14.1
+  9.50     13.9     14.1     14.2     12.8     12.2     12.7     13.2     13.6
+  9.80     13.5     13.6     13.5     12.3     11.7     12.2     12.6     13.2
+ 10.10     13.0     13.1     13.2     11.9     11.3     11.9     12.0     12.8
+ 10.40     12.6     12.9     12.7     11.7     11.0     11.5     11.9     12.5
+ 10.70     12.3     12.4     12.4     11.1     10.5     11.0     11.5     12.3
+ 11.00     11.7     11.9     11.9     10.8     10.2     10.7     11.1     11.9
+
+  sektor  topp (dpt)   kontrast
+       0       4.171       18.9x
+      45       4.293       17.8x
+      90       4.348       22.4x
+     135       4.419       24.2x
+     180       4.369       27.6x
+     225       4.332       26.4x
+     270       4.175       29.6x
+     315       4.158       16.4x
+
+spridning mellan sektorer: 0.261 dpt
+lutningsanpassning: amplitud 0.132 dpt mot 141 grader, residual 0.020
+
+  under ~0.10 dpt: platt sa langt detta kan avgora
+  0.10-0.30 dpt  : marginell lutning
+  over 0.30 dpt  : tydlig lutning, kameran star inte vinkelratt
+[22:41:53.386865412] [3663]  INFO Camera camera_manager.cpp:340 libcamera v0.7.2+rpt20260817
+[22:41:53.420361403] [3671]  WARN CameraSensorProperties camera_sensor_properties.cpp:612 No static properties available for 'imx708_noir'
+[22:41:53.420422601] [3671]  WARN CameraSensorProperties camera_sensor_properties.cpp:614 Please consider updating the camera sensor properties database
+[22:41:53.504890390] [3671]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[22:41:53.544527205] [3671]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx708_noir.json
+[22:41:53.555611043] [3671]  WARN CameraSensor camera_sensor_legacy.cpp:502 'imx708_noir': No sensor delays found in static properties. Assuming unverified defaults.
+[22:41:53.556634062] [3671]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx708@1a' for pipeline handler rpi/vc4
+[22:41:53.556693958] [3671]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx708@1a to Unicam device /dev/media0 and ISP device /dev/media1
+[22:41:53.571077321] [3663]  INFO Camera camera.cpp:1216 configuring streams: (0) 2304x1296-YUV420/Rec709 (1) 2304x1296-SBGGR10_CSI2P/RAW
+[22:41:53.571682216] [3671]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx708@1a - Selected sensor format: 2304x1296-SBGGR10_1X10/RAW - Selected unicam format: 2304x1296-pBAA/RAW
