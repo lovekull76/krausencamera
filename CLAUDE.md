@@ -361,6 +361,42 @@ number to beat is **14.7 px/h in its first hour**.
 > since, and in the same age class as housing 1, which never drifted. Stiffening
 > it would address the one joint that has already settled.
 
+## Temperature ruled out by a reversal, and the settling time measured
+
+Housing 3 logged for 18.5 hours with a factory-fresh camera and locked focus.
+The garage fell 22.3 -> 21.5 C overnight and then **rose** to 21.8 through the
+afternoon, which is the reversal test the earlier data could not provide:
+
+```
+night        temp falling      dy falling
+afternoon    temp RISING       dy still falling, -0.31 px/h
+```
+
+Had the drift been thermal it would have turned around. It did not. The
+correlation within either window is high — both are monotonic there — but its
+**sign flips between them**, and a causal relationship does not do that.
+
+This closes a question that had been reopened twice: temperature is not the
+driver. It was already implausible on magnitude, needing 0.22 deg/C where
+expansion in a 30 mm ABS-GF body gives 0.002, and now it fails a direct test.
+
+**The settling itself is well behaved.** Fitting two exponentials:
+
+| | time constant | amplitude |
+|---|---|---|
+| the joint seating | 0.10 h | −29.0 px |
+| the material relaxing | 9.5 h | −40.3 px |
+| asymptote | | −50.6 px |
+
+Rate falls from −15 px/h at the start to −0.31 now, and the fit puts it at
+−0.027 px/h by 48 hours — settled by roughly two days after installation. The
+fit's rms is 1.52 px, so treat it as indicative.
+
+> **Which reframes annealing.** If an un-annealed housing settles in two days
+> anyway, the oven buys *time*, not a different end state. Still worth it —
+> two days per iteration is a lot when iterating — but the comparison to make
+> is "does it reach its asymptote sooner", not "does it drift less".
+
 ## ⚠️ The 2026-09-07 calibration is void
 
 The camera module used for it had been damaged the day before — the drill caught
