@@ -205,11 +205,14 @@ def main() -> int:
         picam2.stop()
         lamp.shutdown()
 
-    if t_start == t_start and t_end == t_end and t_end - t_start > 1.0:
+    # Temperature is reported, not used to reject. The warm-up check idles the
+    # camera while the measurement drives the lens eight times, so AF activity
+    # heats it a degree or two even from equilibrium -- the check measures the
+    # wrong phase. What matters is whether the readings themselves drift, and
+    # that is measured directly below.
+    if t_start == t_start and t_end == t_end:
         print(f"\nsensortemperatur {t_start:.0f} -> {t_end:.0f} C  "
               f"({t_end-t_start:+.0f})")
-        print("  ** KAMERAN AR INTE VARM ** punkten sparas inte")
-        return 1
 
     v = np.array(lo + hi)
     if len(v) < 3:
@@ -236,10 +239,12 @@ def main() -> int:
         span = k * (idx[-1] - idx[0])
         print(f"  trend inom korningen {span:+.4f} dpt ({span*sens:+.2f} mm)")
         if abs(span) > 2.5 * detr.std(ddof=1):
-            print(f"  ** RIGGEN SATTER SIG FORTFARANDE ** trenden ar "
+            print(f"  ** DRIFT UNDER MATNINGEN ** trenden ar "
                   f"{abs(span)/detr.std(ddof=1):.1f}x det avtrendade bruset.")
-            print(f"     Punktens medelvarde ar fel med storleksordningen "
-                  f"{abs(span)*sens/2:.2f} mm. Vanta och mat om.")
+            print(f"     Medelvardet ar fel med storleksordningen "
+                  f"{abs(span)*sens/2:.2f} mm. Punkten sparas inte -- vanta och "
+                  f"mat om.")
+            return 1
     print(f"  precision vid {args.distance:.0f} mm: {v.std(ddof=1)*sens:.3f} mm"
           + (f"   (avtrendad {detr.std(ddof=1)*sens:.3f} mm)"
              if len(val) > 3 else ""))

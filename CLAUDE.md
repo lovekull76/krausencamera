@@ -325,6 +325,52 @@ takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
 directions. Most of that is pipeline latency, not the actuator. The old
 `0.35 + 0.04/dioptre` sampled inside the transition.
 
+## PDAF calibration, seven points (2026-09-10)
+
+Measured from **the lid's underside**, which is the reference that matters: zero
+there means foam against the lid. The model's offset absorbs a constant, so only
+the spacing between heights has to be accurate.
+
+```
+dpt = 1083.6/(d + 40.58)        d = 1083.6/dpt − 40.58
+```
+
+The fitted 40.58 mm places the lens plane just outside the housing face, which
+sits 41 mm above the lid. That number was not put in; it fell out of the fit, and
+landing within a millimetre of where the optics physically are is the best check
+available that the model means something.
+
+| from the lid | dpt | precision |
+|---|---|---|
+| 40 mm | 13.45 | 0.07 mm |
+| 72 mm | 9.63 | 0.14 mm |
+| 110 mm | 7.20 | 0.25 mm |
+| 145 mm | 5.84 | 0.38 mm |
+| 181 mm | 4.89 | 0.54 mm |
+
+Data in `calib/af-pdaf-20260910.csv`. Every point taken with the camera warm,
+the trend inside each run below 2.5x its own noise, and eight AF cycles parked
+low/high/high/low.
+
+### Two accuracies, and only one of them governs
+
+Leave-one-out gives **1.4 mm rms**, five times the AF scatter, and a third
+parameter does not improve it — 1.38 against 1.44. So the residual is not the
+model: it is in the distances or the rig's geometry between heights.
+
+But krausen height is a **difference from a zero taken at fill**, so a smooth
+calibration error largely cancels. What governs is how consistently the sensor
+reads, and that is the 0.15-0.34 mm above.
+
+| | |
+|---|---|
+| absolute accuracy | ~1.4 mm — the calibration's own quality |
+| relative precision | **0.15-0.34 mm** — what the height measurement inherits |
+
+Improving the first needs better distance metrology, not more AF points. A
+folding rule was used above 155 mm and a caliper below; the two caliper points
+did not fit noticeably better, so the rule is not the whole story either.
+
 ## Focus has a near limit, and it is inside the range that matters
 
 The lens's travel ends at about **15.5 dioptres**. Driven by hand from 8 to 26
