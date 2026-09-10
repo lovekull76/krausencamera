@@ -325,77 +325,175 @@ takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
 directions. Most of that is pipeline latency, not the actuator. The old
 `0.35 + 0.04/dioptre` sampled inside the transition.
 
-## PDAF calibration, seven points (2026-09-10)
+## PDAF calibration, nine points (2026-09-10)
 
 Measured from **the lid's underside**, which is the reference that matters: zero
 there means foam against the lid. The model's offset absorbs a constant, so only
 the spacing between heights has to be accurate.
 
 ```
-dpt = 0.984 + 794.3/(d + 19.06)           eight points, 53 to 181 mm
+dpt = 1.0669 + 770.3/(d + 17.21)          nine points, 43.9 to 181 mm
+                                          fit rms 0.0284 dpt, LOO 1.08 mm
 ```
 
 **The model form depends on the range.** Over 109-181 mm a two-parameter
-`b/(d+c)` predicted better than three — leave-one-out 1.44 against 1.38 mm — so
-the additive term looked like overfitting. Adding a point at 53.44 mm settled it
-the other way:
-
-| | fit rms | LOO max | LOO rms |
-|---|---|---|---|
-| `b/(d+c)` | 0.0882 dpt | 5.58 mm | 2.65 mm |
-| `a + b/(d+c)` | **0.0408** | **2.12** | **1.58** |
-
-The choice survived two corrections that might have overturned it: the
-53.44 mm point was re-measured once its target was glued down (the mean
-moved 0.18 mm, the scatter improved from 0.041 to 0.032 dpt), and the CSV
-was writing distances to one decimal, throwing away the hundredths Love had
-measured with a caliper. Neither moved the leave-one-out figures by more
-than 0.08 mm. It is the *range* that demands the third parameter, not any
-single point.
-
-One hyperbola cannot carry the curvature from 53 to 181 mm. The near point was
+`b/(d+c)` predicted better than three, so the additive term looked like
+overfitting. Adding points at 53.44 and then 43.91 mm settled it the other way —
+one hyperbola cannot carry the curvature from 44 to 181 mm. The near point was
 measured to test exactly that, and it failed the seven-point model's prediction
 by 3.77 mm before it improved anything.
 
 > **A check was lost in the trade.** The two-parameter fit put the lens plane
 > 40.58 mm above the lid, and the housing face sits at 41 — a number nobody
 > supplied, landing within a millimetre of where the optics are. With three
-> parameters it becomes 18.44 mm plus a 1.01 dpt additive term, which may be a
+> parameters it becomes 17.21 mm plus a 1.07 dpt additive term, which may be a
 > real VCM zero offset but corresponds to nothing measurable. More parameters
 > fit better and mean less.
 
-| from the lid | dpt | precision |
-|---|---|---|
-| 40 mm | 13.45 | 0.07 mm |
-| 72 mm | 9.63 | 0.14 mm |
-| 110 mm | 7.20 | 0.25 mm |
-| 145 mm | 5.84 | 0.38 mm |
-| 181 mm | 4.89 | 0.54 mm |
+| from the lid | dpt | mm/dpt | within-run precision |
+|---|---|---|---|
+| 43.91 mm | 13.69 | 4.9 | 0.11 mm |
+| 71.57 mm | 9.71 | 10.2 | 0.15 mm |
+| 108.32 mm | 7.25 | 20.5 | 0.28 mm |
+| 144.55 mm | 5.84 | 34.0 | 0.24 mm |
+| 181 mm | 4.93 | 51.0 | 0.29 mm |
 
-Data in `calib/af-pdaf-20260910.csv`. Every point taken with the camera warm,
-the trend inside each run below 2.5x its own noise, and eight AF cycles parked
-low/high/high/low.
+Data in `calib/af-pdaf-20260910.csv`. Every point is eight AF cycles parked
+low/high/high/low, taken with the camera warm.
 
-### Two accuracies, and only one of them governs
+### The folding rule read 0.5 mm high, and it was not the explanation
 
-Leave-one-out gives **1.4 mm rms**, five times the AF scatter, and a third
-parameter does not improve it — 1.38 against 1.44. So the residual is not the
-model: it is in the distances or the rig's geometry between heights.
+The residual against the seven-point fit was a **bump**: zero at 44-90, then
+-2.3, -2.8, -1.7 mm at 109-145, then zero again at 162-181. Nothing optical has
+that shape, and the suspect region was exactly the folding-rule measurements, so
+109, 127 and 145 were re-measured with the caliper (which reaches 155 mm).
 
-But krausen height is a **difference from a zero taken at fill**, so a smooth
-calibration error largely cancels. What governs is how consistently the sensor
-reads, and that is the 0.15-0.34 mm above.
+They came back **108.32, 126.37, 144.55** — the rule read 0.45-0.68 mm high,
+consistently, but nothing like the 1.7-2.8 mm the model demanded. The
+prediction failed.
+
+It still changed the character of the residual, from a localised bump to a
+smooth wave, and dropped the fit rms 30 %. Which sent me chasing the model form
+instead — also wrong, see below.
+
+> `89.9 -> 90.21` on re-measurement, same instrument both times. **The rig
+> re-creates itself to about 0.3 mm** as the caliper sees it. That is the floor
+> on what any re-measurement of a dismantled height can achieve.
+
+### ⚠️ The camera was cold, and that is the whole story
+
+Measured 2026-09-10, 21:00-22:01, a 60-minute session at a fixed 126.39 mm with
+the camera held open and the rig untouched. Twenty-one points, all 8/8.
+
+```
+        deviation from the final plateau
+    0s      -10.94 mm
+  360s       -3.07
+  900s       -0.77
+ 1800s       -0.50
+ 2160s       +0.00
+ 3600s       -0.01
+```
+
+**From cold the reading is 10.9 mm out, and it takes 36 minutes to arrive.**
+Once there it is flat: the scatter of the nine point-means over the last 24
+minutes was 0.00247 dpt against 0.00257 predicted by counting noise alone. There
+is no drift left to measure — the settled camera is a noise-limited instrument
+at **0.066 mm** here.
+
+`af_calibrate.py` was run once per height, so every calibration point was taken
+on its own cold start, at whatever phase of that curve the preceding faff
+happened to land on.
+
+### The warm-up check never worked, and it failed twice over
+
+It asked the sensor temperature to rise less than 0.6 C between samples 30 s
+apart. Over this session the temperature went 53 to 58 C in eighteen minutes —
+**0.14 C per half-minute, always under the threshold.** So it fired after two
+minutes every single time, regardless of how cold the camera was, and printed
+`jamvikt vid 51 C` while the true equilibrium was 58.
+
+Two separate mistakes, and the second is the more instructive:
+
+- **The wrong quantity.** Temperature is a proxy; what matters is whether the
+  reading has stopped moving. Judge that directly.
+- **The wrong shape.** A difference between two neighbouring samples drowns in
+  the noise long before the underlying trend does. I repeated this error live
+  the same evening: I called the plateau at t=1080 s because the step from the
+  previous point was -0.0009 dpt, and the curve still had 0.79 mm to go. The
+  test has to be a **fitted trend over several readings**, not one step.
+
+`warm_up()` now runs AF cycles — the same duty cycle the measurement itself
+draws — and fits a slope over the last six readings, declaring equilibrium below
+0.03 dpt/h. The warm-up tail runs at +0.088 dpt/h, so the two separate cleanly.
+`--warmup-max` is 50 minutes; the old 25 would now time out.
+
+### Retracted: "it is the rig, not the camera"
+
+Written earlier the same evening, from three repeats: 109 mm re-run on an
+untouched rig agreed to 0.01 mm, while 126 mm rebuilt to the same caliper height
+differed by 1.46 mm. I concluded the scatter belonged to the fixture.
+
+**That does not survive.** All three runs were separate invocations, so each sat
+at a different point on a 10.9 mm warm-up curve, and the temperatures were
+printed as whole numbers — a "54 versus 55 C" could be anything from 0.1 to 1.9
+degrees. The two repeats differ in how warm the camera was at least as much as
+in whether the rig was rebuilt, and nothing in that data separates them.
+
+The rig may still contribute. It is simply not measured, and the 1.46 mm was not
+evidence for it.
+
+> What does survive from that round: the folding rule reads 0.45-0.68 mm high
+> against the caliper, the rig re-creates to 0.3 mm as the caliper sees it, and
+> extra model parameters do not absorb the residual. None of those depend on the
+> camera's thermal state.
+
+### Consequences for the table
+
+The nine points run 54 C at 181 mm to 57 C at 44 mm — **the thermal state
+correlates with distance**, because the series worked from far to near over one
+day. A confound that is monotonic in the fitted variable does not show up as a
+bad fit. It is absorbed into the parameters, and the calibration comes out wrong
+at every temperature except the one it was measured at.
+
+That is the likeliest source of the residual wave, and it means **the table
+should be re-taken on one thermal state**. `--request` does that: the session
+sleeps until a file appears, takes a point, deletes it, and never closes the
+camera. Write the distance in mm into the file, or `stop` to finish. One 36
+minute warm-up buys the whole table.
 
 | | |
 |---|---|
-| absolute accuracy | ~1.4 mm — the calibration's own quality |
-| relative precision | **0.15-0.34 mm** — what the height measurement inherits |
+| cold start error | **10.9 mm** at 126 mm |
+| time to equilibrium | **36 min** |
+| settled, 8-cycle mean | **0.066 mm** — counting noise, no drift |
+| settled, single AF cycle | 0.16 mm |
 
-Improving the first needs better distance metrology, not more AF points. A
-folding rule was used above 155 mm and a caliper below; the two caliper points
-did not fit noticeably better, so the rule is not the whole story either.
+### The door was a red herring, but only after dark
 
-## Focus has a near limit, and it is inside the range that matters
+Love found the rig's side door had been open, probably for hours, letting
+visible light in. The camera is NoIR and the focal plane for 850 nm is not where
+it is for daylight, so a changing mixture moves the reading — a real mechanism,
+and it predicted the right shape.
+
+Tested inside the session: door opened 21:23:37, closed 21:32:35, with the slow
+warm-up tail removed as a linear trend.
+
+```
+door step   -0.11 +- 0.11 mm    1.0 sigma    upper bound 0.32 mm
+```
+
+Nothing. Which also settles a contamination I had walked into: the door was
+closed between the first two session points, so the +0.2166 dpt jump there had
+two candidate causes. It was the temperature.
+
+> **The test was run at half past nine in September, in the dark.** It shows
+> that a door onto an unlit garage does nothing. It says very little about the
+> same door at two in the afternoon, which is when several table points were
+> taken. Repeating it in daylight costs ten minutes with the camera already
+> warm, and until then daylight is not excluded as a table error.
+
+## Focus has a near limit, and it is 3 mm short of the shoulder
 
 The lens's travel ends at about **15.5 dioptres**. Driven by hand from 8 to 26
 dpt the sharpness climbs steeply to 15.5 and then goes flat — 25.7 to 26.7 over
@@ -406,21 +504,36 @@ and `LensPosition` accepting values up to 32 changes nothing.
 Full reach 15.0. That is free range which was being left unused, and it is worth
 about 20 mm of working distance at the near end.
 
-| distance from housing face | result |
+From the nine-point model, measured from the lid's underside:
+
+| | from the lid |
 |---|---|
-| 101 mm | focuses at 9.68 dpt, 8/8, 0.27 mm |
-| **76 mm** | **railed — sharpness never peaks** |
+| 13.0 dpt | 47.4 mm |
+| 14.0 dpt | 42.4 mm |
+| **15.0 dpt — the rail** | **38.1 mm** |
+| the tank's shoulder | 35 mm |
 
-So the near limit sits **between 76 and 101 mm**, which is 35 to 60 mm below the
-lid.
+The nearest point actually measured is **43.91 mm at 13.69 dpt**, 8/8 converged,
+0.11 mm precision, with 1.3 dioptres of margin left to the stop. So the model's
+38 mm is an extrapolation of about 6 mm past real data, not a measured limit.
 
-> **The last 35-60 mm before blow-off are blind to focus.** Exactly when knowing
-> the krausen height matters most, the method stops working. That is the single
-> most important limitation found so far, and it changes the balance against the
-> laser: **the laser has no near limit** -- its sensitivity only improves as the
-> surface approaches. Focus is better far and impossible near; triangulation is
-> worse far and best near. They fail at opposite ends, which is a good reason to
-> keep both rather than choose.
+> **Retracted: "the last 35-60 mm before blow-off are blind to focus."** That
+> came from a pair of railing tests at 76 and 101 mm *from the housing face*,
+> taken before the lid became the reference and before the module was shimmed.
+> It was recorded as the single most important limitation found so far. It is
+> not: focus reaches to within about 3 mm of the shoulder, and the last
+> measurement before the rail is one of the most precise in the table — 0.11 mm,
+> because mm/dpt falls to 4.9 there.
+>
+> The argument for keeping the laser survives on its own terms, just not this
+> one. Triangulation is best near and worst far; focus is the reverse, its
+> precision decaying from 0.11 mm at 44 mm to 0.29 at 181. They fail at opposite
+> ends, which is a good reason to keep both rather than choose.
+
+**Railing near the shoulder is still a free threshold detector.** The rail sits
+at 38.1 mm and the shoulder at 35, so a reading that rails means the surface has
+essentially arrived at the neck — which is exactly the condition the alarm cares
+about, reported by the sensor going blind rather than by a number.
 
 ### Railing reports success
 
