@@ -137,26 +137,109 @@ def warm_up(picam2, controls, args, lamp_is_on=True):
     t0 = time.time()
     ts, vs = [], []
     while time.time() - t0 < args.warmup_max * 60:
+        # Check the level every round, not only when AF fails. A scene that
+        # goes dark is caught by the failure; a scene that comes *back* is not,
+        # and then the exposure chosen against the dark one leaves the frame
+        # clipped. That happened for real: a hand in the way picked 50 ms, the
+        # scene returned, and the warm-up spent minutes judging a blown image.
+        if args.auto_exposure:
+            p999 = level_p999(picam2)
+            if not 0.55 * args.exposure_target <= p999 <= 1.02 * args.exposure_target:
+                print(f"  nivan ur band (p99.9 {p999:.0f}) -- valjer om",
+                      flush=True)
+                pick_exposure(picam2, args)
         v = _mini(picam2, controls, args)
         el = time.time() - t0
         ts.append(el)
         vs.append(v)
         temp = picam2.capture_metadata().get("SensorTemperature", float("nan"))
-        line = f"  {el/60:5.1f} min   {v:8.4f} dpt   {temp:.1f} C"
-        if len(vs) >= args.warmup_window:
-            a = np.array(ts[-args.warmup_window:])
-            b = np.array(vs[-args.warmup_window:])
-            slope = np.polyfit(a, b, 1)[0] * 3600.0
+        line = (f"  {el/60:5.1f} min   "
+                + (f"{v:8.4f} dpt" if v == v else "   RAIL/FAIL")
+                + f"   {temp:.1f} C")
+        if v != v and args.auto_exposure:
+            # AF found nothing. The commonest reason during a warm-up is that
+            # the scene moved: the exposure was chosen once, at the start, and
+            # the rig has been rebuilt since. Re-choose before blaming the lens.
+            print(line + "   -> valjer om exponeringen", flush=True)
+            pick_exposure(picam2, args)
+            time.sleep(max(0.0, args.warmup_interval - (time.time() - t0 - el)))
+            continue
+        # A single failed reading must not poison the fit. np.polyfit returns
+        # nan for the whole window if one sample is nan, and abs(nan) < x is
+        # False, so the warm-up would simply never finish -- a hang dressed as
+        # patience. Drop them instead, and say how many were dropped.
+        slope = None
+        good = [(x, z) for x, z in zip(ts, vs) if z == z][-args.warmup_window:]
+        if len(good) >= args.warmup_window:
+            a = np.array([x for x, _ in good])
+            b = np.array([z for _, z in good])
+            slope = float(np.polyfit(a, b, 1)[0] * 3600.0)
             line += f"   trend {slope:+7.3f} dpt/h"
-            if abs(slope) < args.warmup_slope:
-                print(line + "   STILLA", flush=True)
-                print(f"  jamvikt efter {el/60:.0f} min vid {temp:.1f} C, "
-                      f"trend {slope:+.3f} dpt/h\n")
-                return
+            if el < args.warmup_min * 60:
+                line += f"   (minst {args.warmup_min:.0f} min)"
+        if (slope is not None and el >= args.warmup_min * 60
+                and abs(slope) < args.warmup_slope):
+            print(line + "   STILLA", flush=True)
+            print(f"  jamvikt efter {el/60:.0f} min vid {temp:.1f} C, "
+                  f"trend {slope:+.3f} dpt/h\n")
+            return
         print(line, flush=True)
         time.sleep(max(0.0, args.warmup_interval - (time.time() - t0 - el)))
     print(f"  planade aldrig ut inom {args.warmup_max:.0f} min -- "
           f"matningen ar sannolikt fel\n")
+
+
+def level_p999(picam2):
+    """One capture, the 99.9th percentile of the worst channel. Cheap."""
+    for _ in range(2):
+        picam2.capture_array("main")
+    a = picam2.capture_array("main")[:, :, :3]
+    return float(np.percentile(a.max(axis=2).astype(np.float32), 99.9))
+
+
+def pick_exposure(picam2, args):
+    """Choose the exposure that holds the image level, not the exposure itself.
+
+    The scene brightens as the inverse square, so across 44 to 181 mm it varies
+    by a factor of seventeen. One fixed exposure clips at the near end or
+    starves the far one; an exposure chosen by hand per height is a second
+    variable that correlates with distance -- which is exactly the shape of
+    confound that put a thermal state into the last table and hid inside the
+    fitted parameters.
+
+    So hold the level and let the exposure follow. Same criterion as
+    exposure_probe: the longest exposure keeping the 99.9th percentile under
+    the target, read as the worst of R, G and B because whichever channel clips
+    first is the one that matters. The 99.9th rather than the maximum because
+    a few specular pixels should not drag the whole frame dark.
+    """
+    best = None
+    for e in args.exposures:
+        # A frame cannot be shorter than its own exposure, so the duration
+        # limits have to be lifted with it or the request is silently capped.
+        d = max(33333, e + 1000)
+        picam2.set_controls({"ExposureTime": e, "FrameDurationLimits": (d, d)})
+        time.sleep(0.6)
+        for _ in range(3):
+            picam2.capture_array("main")
+        a = picam2.capture_array("main")[:, :, :3]
+        y = a.max(axis=2).astype(np.float32)
+        p999 = float(np.percentile(y, 99.9))
+        if p999 <= args.exposure_target:
+            best = (e, p999, float(y.mean()))
+    if best is None:
+        e = min(args.exposures)
+        print(f"  ** varje exponering klipper ** anvander kortaste {e} us")
+        d = max(33333, e + 1000)
+        picam2.set_controls({"ExposureTime": e, "FrameDurationLimits": (d, d)})
+        time.sleep(0.6)
+        return e, float("nan")
+    e, p999, mean = best
+    d = max(33333, e + 1000)
+    picam2.set_controls({"ExposureTime": e, "FrameDurationLimits": (d, d)})
+    time.sleep(0.6)
+    print(f"  exponering {e} us   p99.9 {p999:.0f}   medelniva {mean:.1f}")
+    return e, mean
 
 
 def take_point(picam2, controls, args):
@@ -361,7 +444,7 @@ def run_session(picam2, controls, args):
         fh.write(f"# session {time.strftime('%Y-%m-%d %H:%M:%S')}  "
                  f"exp {args.exposure_us} us  runs {args.runs}"
                  + (f"  d {args.distance:.2f}" if args.distance else "") + "\n")
-        fh.write("# t_s,d_mm,medel_dpt,sigma_dpt,n_ok,n_runs,sensor_C\n")
+        fh.write("# t_s,d_mm,medel_dpt,sigma_dpt,n_ok,n_runs,sensor_C,exp_us,niva,drift\n")
         fh.flush()
         while True:
             dist = args.distance
@@ -389,16 +472,26 @@ def run_session(picam2, controls, args):
             n += 1
             print(f"\n=== punkt {n}   {el/60:5.1f} min"
                   + (f"   d {dist:.2f} mm" if dist else "") + " ===", flush=True)
+            exp_us, level = (pick_exposure(picam2, args) if args.auto_exposure
+                             else (args.exposure_us, float("nan")))
             lo, hi, seq, ts, te = take_point(picam2, controls, args)
             label = f"{dist:.0f} mm" if dist else f"{el/60:.0f} min"
-            mean, std, _ = summarise(lo, hi, seq, ts, te, args, label)
+            mean, std, drifted = summarise(lo, hi, seq, ts, te, args, label)
+            if drifted:
+                # The single-point path refuses to save a drifting point. A
+                # session cannot refuse -- the operator is standing there and
+                # the camera must not close -- so it records the verdict
+                # instead, and the row can be dropped when the table is fitted.
+                print("     ** raden markeras drift=1 i CSV:n **")
             dcol = f"{dist:.2f}" if dist else ""
             if mean is not None:
                 fh.write(f"{el:.0f},{dcol},{mean:.5f},{std:.5f},"
-                         f"{len(lo)+len(hi)},{args.runs},{te:.2f}\n")
+                         f"{len(lo)+len(hi)},{args.runs},{te:.2f},"
+                         f"{exp_us},{level:.1f},{int(drifted)}\n")
             else:
                 fh.write(f"{el:.0f},{dcol},,,"
-                         f"{len(lo)+len(hi)},{args.runs},{te:.2f}\n")
+                         f"{len(lo)+len(hi)},{args.runs},{te:.2f},"
+                         f"{exp_us},{level:.1f},1\n")
             fh.flush()
             if not args.request:
                 if time.time() - t0 >= args.duration * 60:
@@ -420,6 +513,19 @@ def main() -> int:
                    help="keep the camera open and repeat the point, so the "
                         "whole series shares one thermal state and one "
                         "untouched rig. For a scene that changes by itself.")
+    p.add_argument("--auto-exposure", action="store_true",
+                   help="choose the exposure before every point so the image "
+                        "level stays constant across the range instead of the "
+                        "exposure. Recommended for a calibration table.")
+    p.add_argument("--exposure-target", type=float, default=230.0,
+                   help="99.9th percentile the auto exposure aims under")
+    p.add_argument("--exposures", type=int, nargs="+",
+                   default=[1000, 2000, 4000, 8000, 15000, 25000, 37000, 50000],
+                   help="exposures the auto choice picks from, us")
+    p.add_argument("--bitrate", type=int, default=12_000_000,
+                   help="MJPEG bitrate for the preview. Matches liveview's "
+                        "default; a third of it visibly posterises a smooth "
+                        "gradient like the tube wall.")
     p.add_argument("--preview", type=int, default=0, metavar="PORT",
                    help="serve the lores stream on this port while the session "
                         "runs, so heights can be placed without stopping it. "
@@ -436,6 +542,12 @@ def main() -> int:
     p.add_argument("--warmup-max", type=float, default=50.0,
                    help="minutes allowed for the reading to settle. From cold "
                         "it takes about 36; the old 25 would have timed out.")
+    p.add_argument("--warmup-min", type=float, default=30.0,
+                   help="minutes the warm-up runs before it may declare "
+                        "equilibrium at all. The trend test judges the AF "
+                        "reading, so anything moving in front of the camera -- "
+                        "a rig being built -- can flatten it for the wrong "
+                        "reason. Measured settling is about 36 minutes.")
     p.add_argument("--warmup-interval", type=float, default=120.0,
                    help="seconds between warm-up readings")
     p.add_argument("--warmup-window", type=int, default=6,
@@ -483,7 +595,7 @@ def main() -> int:
         from picamera2.encoders import MJPEGEncoder
         from picamera2.outputs import FileOutput
         broker = FrameBroker()
-        picam2.start_recording(MJPEGEncoder(bitrate=4_000_000),
+        picam2.start_recording(MJPEGEncoder(bitrate=args.bitrate),
                                FileOutput(broker), name="lores")
         start_preview(broker, args.preview)
     time.sleep(1.5)
@@ -494,6 +606,8 @@ def main() -> int:
     # returned a plausible-looking result that meant nothing.
     lamp.acquire()
     time.sleep(1.2)
+    if args.auto_exposure:
+        pick_exposure(picam2, args)
     warm_up(picam2, controls, args, lamp_is_on=lamp.is_lit)
 
     try:

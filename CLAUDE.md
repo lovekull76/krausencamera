@@ -507,6 +507,63 @@ measure to its top: at 181 mm a 40 mm block puts the reading at 141 mm, well
 inside range, and two caliper readings beat one rule reading comfortably.
 Remove the block before taking the AF point.
 
+### Three confounds, each worth a millimetre or two
+
+The first attempt at re-taking the table on one thermal state (2026-09-10,
+23:00-00:15) got four heights in and found two more confounds. Held together
+they explain the old table's residual wave without needing any model deficiency.
+
+| | worth | fixed by |
+|---|---|---|
+| camera not thermally settled | 10.9 mm from cold | holding the camera open, 32 min once |
+| **rebuild settling** | **1-2 mm, rate varies 8x** | repeat until two readings agree |
+| **ambient cooling** | ~1 mm per degree | randomise the height order |
+
+**Rebuild settling is not a fixed wait.** Two stacks behaved completely
+differently:
+
+```
+90.15 mm   3 to 8 min after the rebuild    -0.33 mm over 292 s   =  -4 mm/h
+108.16 mm  4 to 6 min after the rebuild    -1.01 mm over 110 s   = -33 mm/h
+```
+
+Eight times the rate, four minutes in, on the same blocks. A fixed settling
+pause is therefore guesswork -- the 90 mm stack looked settled after three
+minutes and the 108 mm one was still running away after four. **The only
+protocol that works is to measure again until two consecutive readings agree**,
+however long that takes. The direction is always the same: dioptres fall, so the
+target sinks away from the lid.
+
+**Ambient is the third one, and holding the camera open does not touch it.** The
+sensor read 63, 62, 62, 61, 61, 61, 60 C across the session as the garage cooled
+after midnight. At 0.07 dpt/C that is over a millimetre a degree, and it
+accumulates in measurement order -- which is distance order if the heights are
+built in sequence. Randomising the order turns it from a bias into scatter.
+
+> `SensorTemperature` is reported in whole degrees, so a "62 versus 61" hides
+> anything from 0.1 to 1.9 C, which is 0.1 to 2 mm. The quantisation is in the
+> sensor, not the logging, so it cannot be fixed -- only averaged down over many
+> readings.
+
+### The tape is a thermal barrier, and that is why temperature leads the reading
+
+Love's observation, and it explains something that had been nagging: the sensor
+temperature plateaus after about eighteen minutes while the reading keeps moving
+for another quarter of an hour.
+
+The module is held to its PCB by thick double-sided tape (the same tape that
+lets it creep off in vertical mounting). Heat from the ISP and the board has to
+cross that tape to reach the module. `SensorTemperature` is measured in the
+sensor die, inside the module; the lens and VCM sit in the same module but
+further from the heat path still. So the sensor temperature is a **leading
+indicator** of the lens's temperature, not a measure of it -- it arrives first
+and levels off first, while the part that actually sets focus is still warming.
+
+Which is the real reason the trend criterion has to be on the reading. The old
+temperature criterion was not merely implemented wrongly; it watched a quantity
+that by construction settles before the one that matters. A half-hour time
+constant also argues the tape is not thermally conductive.
+
 ### The door was a red herring, but only after dark
 
 Love found the rig's side door had been open, probably for hours, letting
