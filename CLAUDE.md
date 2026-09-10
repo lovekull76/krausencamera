@@ -469,6 +469,44 @@ minute warm-up buys the whole table.
 | settled, 8-cycle mean | **0.066 mm** — counting noise, no drift |
 | settled, single AF cycle | 0.16 mm |
 
+### Re-taking the table: one thermal state, one live view
+
+`--request FILE` makes the session sleep until that file appears, take a point,
+and delete it -- so a whole table is measured without the camera ever closing.
+Write the distance in mm into the file, or `stop` to finish.
+
+`--preview PORT` serves the lores stream while it runs. The service has to be
+stopped for a calibration, so without this there is no way to see what the
+camera is looking at while a height is being built, which matters most at the
+far end where the target is small in frame.
+
+**The preview also buys configuration parity, which is the better reason.**
+`af_calibrate` configured a single main stream while `liveview` runs main plus
+lores. If the AF statistics depend on the stream configuration at all, the table
+would carry a configuration-dependent offset with nothing in the data to reveal
+it. Both now use the same two streams.
+
+> **The warm-up ran AF in the dark**, because `lamp.acquire()` sat after
+> `warm_up()` in `main()` -- harmless while the check only read a temperature,
+> wrong the moment it started driving AF. It read 2.99 dioptres against the
+> 6.7 the target sits at, and reported equilibrium. Caught by a smoke test.
+>
+> This is the third time in this project that a tool has been handed a dark
+> scene and returned a plausible number: the focus sweep did it when the LEDs
+> moved to GPIO17, the exposure work did it once, and now this. The lamp is now
+> lit before the warm-up, and `warm_up()` refuses to run with it dark.
+
+**Build the heights near to far this time.** The old series ran far to near over
+one day, which is exactly how the thermal state came to correlate with distance.
+On one thermal state the order should not matter -- so running it in the
+opposite order and getting the same model is a free test that it does not.
+
+Above 155 mm the caliper does not reach. Rather than fall back on the folding
+rule, which reads 0.45-0.68 mm high, stand a measured block on the target and
+measure to its top: at 181 mm a 40 mm block puts the reading at 141 mm, well
+inside range, and two caliper readings beat one rule reading comfortably.
+Remove the block before taking the AF point.
+
 ### The door was a red herring, but only after dark
 
 Love found the rig's side door had been open, probably for hours, letting

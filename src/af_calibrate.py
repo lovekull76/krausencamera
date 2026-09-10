@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import threading
 import time
 
 import numpy as np
@@ -106,7 +107,7 @@ def _mini(picam2, controls, args, n=4):
     return float(np.mean(vals)) if vals else float("nan")
 
 
-def warm_up(picam2, controls, args):
+def warm_up(picam2, controls, args, lamp_is_on=True):
     """Wait until the AF reading stops moving. Not the temperature.
 
     Measured 2026-09-10 over a 60-minute session at a fixed 126.39 mm: from a
@@ -129,6 +130,10 @@ def warm_up(picam2, controls, args):
     activity here, which is the same duty cycle the measurement itself runs at.
     """
     print("varmer upp -- kor AF tills avlasningen slutar rora sig", flush=True)
+    if not lamp_is_on:
+        print("  ** LAMPAN AR SLACKT ** AF har inget att fokusera pa och "
+              "avlasningen blir meningslos.")
+        return
     t0 = time.time()
     ts, vs = [], []
     while time.time() - t0 < args.warmup_max * 60:
@@ -251,6 +256,81 @@ def summarise(lo, hi, seq, t_start, t_end, args, label):
     return float(v.mean()), float(v.std(ddof=1)), drifted
 
 
+def start_preview(broker, port):
+    """Serve the lores stream while a session holds the camera.
+
+    A calibration session owns the camera for hours, and the service that
+    normally provides the live view has to be stopped for it. Without this there
+    is no way to see what the camera is looking at while a height is being
+    built -- which matters most at the far end, where the target is small in
+    frame and easy to place badly.
+
+    Reuses liveview's FrameBroker rather than reimplementing it, and the same
+    two-stream configuration, so the calibration is taken under the exact
+    configuration the service runs. A configuration-dependent offset in the AF
+    statistics would otherwise sit in the table with nothing to reveal it.
+    """
+    from http import server as httpserver
+    import socketserver
+
+    PAGE = ("<!doctype html><title>krausencamera -- kalibrering</title>"
+            "<style>body{margin:0;background:#111;color:#ccc;"
+            "font:14px system-ui}img{width:100%;height:auto;display:block}"
+            "p{padding:8px}</style>"
+            "<img src='/stream'><p>Kalibreringssession pagar. "
+            "Kameran far inte stangas -- den ar termiskt utvarmd.</p>")
+
+    class Handler(httpserver.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            if self.path.rstrip("/") in ("", "/index.html"):
+                body = PAGE.encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if not self.path.startswith("/stream"):
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Cache-Control", "no-cache, private")
+            self.send_header("Content-Type",
+                             "multipart/x-mixed-replace; boundary=FRAME")
+            self.end_headers()
+            # A viewer that stops reading blocks the socket once the send
+            # buffer fills, and would otherwise sit there until TCP keepalive
+            # notices -- two hours by default. Same trap as the live view's.
+            self.connection.settimeout(10.0)
+            try:
+                while True:
+                    frame = broker.next_frame()
+                    if frame is None:
+                        continue
+                    self.wfile.write(b"--FRAME\r\n"
+                                     b"Content-Type: image/jpeg\r\n")
+                    self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n"
+                                     .encode())
+                    self.wfile.write(frame)
+                    self.wfile.write(b"\r\n")
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+
+    class Server(socketserver.ThreadingMixIn, httpserver.HTTPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    srv = Server(("", port), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    print(f"forhandsgranskning pa http://krausencamera:{port}/", flush=True)
+    return srv
+
+
 def run_session(picam2, controls, args):
     """Repeat a point without ever closing the camera.
 
@@ -340,6 +420,10 @@ def main() -> int:
                    help="keep the camera open and repeat the point, so the "
                         "whole series shares one thermal state and one "
                         "untouched rig. For a scene that changes by itself.")
+    p.add_argument("--preview", type=int, default=0, metavar="PORT",
+                   help="serve the lores stream on this port while the session "
+                        "runs, so heights can be placed without stopping it. "
+                        "8081 keeps it clear of the service's 8080.")
     p.add_argument("--request", metavar="FILE",
                    help="session takes a point when this file appears, instead "
                         "of on a timer. Put the distance in mm in it, or "
@@ -384,15 +468,33 @@ def main() -> int:
 
     lamp = Lamp("IR illumination", args.led_pin)
     picam2 = Picamera2()
-    picam2.configure(picam2.create_video_configuration(main={"size": (2304, 1296)}))
+    # Same two streams as liveview, so the calibration is measured under the
+    # configuration the service actually runs.
+    from liveview import MAIN_SIZE, FrameBroker
+    picam2.configure(picam2.create_video_configuration(
+        main={"size": MAIN_SIZE},
+        lores={"size": (1024, 576), "format": "YUV420"}))
     picam2.set_controls({"AeEnable": False, "ExposureTime": args.exposure_us,
                          "AnalogueGain": 1.0, "AwbEnable": False,
                          "ColourGains": (0.94, 1.01)})
     picam2.start()
+    broker = None
+    if args.preview:
+        from picamera2.encoders import MJPEGEncoder
+        from picamera2.outputs import FileOutput
+        broker = FrameBroker()
+        picam2.start_recording(MJPEGEncoder(bitrate=4_000_000),
+                               FileOutput(broker), name="lores")
+        start_preview(broker, args.preview)
     time.sleep(1.5)
-    warm_up(picam2, controls, args)
+    # The lamp must be lit BEFORE the warm-up, not after. The old warm-up only
+    # read the temperature, so it did not care; this one drives AF, and AF in a
+    # dark garage converges on nothing. Same trap the focus sweep fell into
+    # when the LEDs moved to GPIO17 -- it silently swept a dark scene and
+    # returned a plausible-looking result that meant nothing.
     lamp.acquire()
     time.sleep(1.2)
+    warm_up(picam2, controls, args, lamp_is_on=lamp.is_lit)
 
     try:
         if args.session:
