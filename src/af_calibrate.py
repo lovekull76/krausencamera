@@ -90,6 +90,10 @@ def main() -> int:
     p.add_argument("--fit", metavar="FILE")
     p.add_argument("--runs", type=int, default=8,
                    help="AF cycles per point, alternating the parking position")
+    p.add_argument("--af-range", type=int, default=2, choices=(0, 1, 2),
+                   help="0 normal, 1 macro, 2 full. Normal rails at 12.0 "
+                        "dioptres; macro and full reach 15.0, which is the "
+                        "lens's actual travel. Free range, so full by default.")
     p.add_argument("--park-low", type=float, default=2.5)
     p.add_argument("--park-high", type=float, default=12.0)
     p.add_argument("--exposure-us", type=int, default=15000)
@@ -128,7 +132,8 @@ def main() -> int:
             picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,
                                  "LensPosition": park})
             time.sleep(1.8)
-            picam2.set_controls({"AfMode": controls.AfModeEnum.Auto})
+            picam2.set_controls({"AfMode": controls.AfModeEnum.Auto,
+                                 "AfRange": args.af_range})
             time.sleep(0.3)
             t0 = time.time()
             picam2.set_controls({"AfTrigger": controls.AfTriggerEnum.Start})
@@ -138,8 +143,15 @@ def main() -> int:
                 st, lp = md.get("AfState"), md.get("LensPosition")
                 if st in (2, 3):
                     break
-            ok = st == 2 and lp
-            print(f"{park:7.1f} {'focused' if ok else 'FAILED':>10} "
+            # Railed against the lens stop is not focus, but AfState says 2 all
+            # the same -- the same shape of failure as the laser reading a tank
+            # bottom through clear water. Treat it as a failure.
+            railed = ok_lp = False
+            if lp is not None:
+                railed = abs(lp - 15.0) < 0.001 or abs(lp - 12.0) < 0.001
+            ok = st == 2 and lp and not railed
+            print(f"{park:7.1f} "
+                  f"{('focused' if ok else ('RAILED' if railed else 'FAILED')):>10} "
                   f"{time.time()-t0:5.1f} " + (f"{lp:9.4f}" if ok else " " * 9),
                   flush=True)
             if ok:

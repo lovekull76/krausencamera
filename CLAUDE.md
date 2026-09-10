@@ -325,6 +325,42 @@ takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
 directions. Most of that is pipeline latency, not the actuator. The old
 `0.35 + 0.04/dioptre` sampled inside the transition.
 
+## Focus has a near limit, and it is inside the range that matters
+
+The lens's travel ends at about **15.5 dioptres**. Driven by hand from 8 to 26
+dpt the sharpness climbs steeply to 15.5 and then goes flat — 25.7 to 26.7 over
+ten dioptres, four per cent. It is not a peak, it is the actuator running out,
+and `LensPosition` accepting values up to 32 changes nothing.
+
+**`AfRange` is worth setting.** The default Normal rails at 12.0 dpt; Macro and
+Full reach 15.0. That is free range which was being left unused, and it is worth
+about 20 mm of working distance at the near end.
+
+| distance from housing face | result |
+|---|---|
+| 101 mm | focuses at 9.68 dpt, 8/8, 0.27 mm |
+| **76 mm** | **railed — sharpness never peaks** |
+
+So the near limit sits **between 76 and 101 mm**, which is 35 to 60 mm below the
+lid.
+
+> **The last 35-60 mm before blow-off are blind to focus.** Exactly when knowing
+> the krausen height matters most, the method stops working. That is the single
+> most important limitation found so far, and it changes the balance against the
+> laser: **the laser has no near limit** -- its sensitivity only improves as the
+> surface approaches. Focus is better far and impossible near; triangulation is
+> worse far and best near. They fail at opposite ends, which is a good reason to
+> keep both rather than choose.
+
+### Railing reports success
+
+`AfState` returns 2 (focused) while the lens sits against its stop, and every
+reading comes back as exactly 12.0000 or 15.0000 with zero scatter. A tight
+cluster at a round number is not precision, it is a mechanical end stop -- the
+same shape of failure as the laser returning a tank bottom seen through clear
+water at 0.06 px repeatability. Both tools now reject a railed reading rather
+than recording it.
+
 ## ⚠️ RESOLVED: the camera module was coming off its own PCB (2026-09-10)
 
 The Camera Module 3's sensor-and-lens package is held to its PCB by **thick

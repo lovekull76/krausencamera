@@ -323,7 +323,11 @@ class FocusTracker:
         self._ir.acquire()
         try:
             time.sleep(0.8)
-            picam2.set_controls({"AfMode": _c.AfModeEnum.Auto})
+            # Full range: normal stops at 12.0 dioptres where the lens
+            # itself travels to 15.0, and that difference is 20 mm of
+            # working distance at the near end.
+            picam2.set_controls({"AfMode": _c.AfModeEnum.Auto,
+                                 "AfRange": _c.AfRangeEnum.Full})
             time.sleep(0.3)
             picam2.set_controls({"AfTrigger": _c.AfTriggerEnum.Start})
             t0 = time.monotonic()
@@ -333,7 +337,7 @@ class FocusTracker:
                 state, lp = md.get("AfState"), md.get("LensPosition")
                 if state in (2, 3):
                     break
-            if state == 2 and lp:
+            if state == 2 and lp and abs(lp - 15.0) > 0.001:
                 self.pdaf_mm = distance_from_focus(lp)
                 if self.distance_mm is None:
                     # The dioptre is the measurement; the millimetres come from
@@ -349,7 +353,11 @@ class FocusTracker:
                              "gap %+.1f mm%s", lp, self.pdaf_mm, self.distance_mm,
                              gap, "   DISAGREE" if abs(gap) > 4.0 else "")
             else:
-                log.warning("pdaf did not converge (state=%s)", state)
+                log.warning("pdaf did not converge (state=%s, lens %s)%s",
+                            state, lp,
+                            " -- RAILED at the near stop, the surface is "
+                            "closer than the lens can focus"
+                            if lp is not None and abs(lp - 15.0) <= 0.001 else "")
         finally:
             self._ir.release()
             picam2.set_controls({"AfMode": 0, "LensPosition": float(held)})
