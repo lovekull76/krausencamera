@@ -462,8 +462,21 @@ def build_camera(args):
     # before capturing it. White balance stays locked regardless: under 850 nm
     # the channels sit within 6 % of each other, so AWB has nothing real to
     # correct and would only chase noise.
-    controls = {"AfMode": 0, "LensPosition": args.lens_position,
-                "AwbEnable": bool(args.auto_wb)}
+    # Continuous AF is for aiming and building, never for measuring: it moves
+    # the lens whenever it likes, and every move changes the magnification by
+    # 0.68 %/dioptre. Opt-in only, and it refuses to coexist with a snapshot
+    # series for that reason.
+    if args.continuous_af:
+        from libcamera import controls as _lc
+        controls = {"AfMode": _lc.AfModeEnum.Continuous,
+                    "AfRange": _lc.AfRangeEnum.Full,
+                    "AwbEnable": bool(args.auto_wb)}
+        log.warning("continuous AF: the lens moves on its own. Aiming only -- "
+                    "magnification changes with it, so nothing measured here "
+                    "compares with anything else.")
+    else:
+        controls = {"AfMode": 0, "LensPosition": args.lens_position,
+                    "AwbEnable": bool(args.auto_wb)}
     if not args.auto_wb:
         controls["ColourGains"] = (args.red_gain, args.blue_gain)
 
@@ -546,6 +559,9 @@ def main() -> int:
                         "about half the measured depth of field)")
     p.add_argument("--snapshot-dir",
                    help="save frame A here after each ranging cycle")
+    p.add_argument("--continuous-af", action="store_true",
+                   help="keep the live view sharp while the scene moves. "
+                        "Aiming only -- the lens moves on its own.")
     p.add_argument("--maintenance-flag",
                    default=os.path.join(os.path.dirname(
                        os.path.abspath(__file__)), "MAINTENANCE"),
@@ -602,6 +618,10 @@ def main() -> int:
     Handler.stream_timeout = args.stream_timeout
     Handler.default_fps = min(max(args.fps, 0.1), FPS_MAX)
     Handler.lores = lores_size(args)
+
+    if args.continuous_af and args.snapshot_dir:
+        log.error("--continuous-af and --snapshot-dir together would archive frames at a magnification that changes between them. Refusing.")
+        return 2
 
     tracker = None
     if args.autofocus or (args.no_laser and args.snapshot_dir):

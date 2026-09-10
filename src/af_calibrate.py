@@ -82,12 +82,53 @@ def report(path):
               f"fel {(dpt[i]-pred)*sens:+6.2f} mm")
 
 
+def warm_up(picam2, args):
+    """Wait until the sensor temperature stops climbing.
+
+    The camera cools whenever it is closed, so one invocation per height is one
+    cold start per height -- and from cold the reading walks 0.745 dioptres over
+    twenty-six minutes while the sensor goes 34 to 56 C, settling to 0.0077 dpt
+    once it levels off. That figure matches the 0.0081 the service measured over
+    eleven hours in equilibrium. Waiting once, here, is what lets a whole series
+    share a single thermal state.
+    """
+    print("varmer upp -- vantar tills sensortemperaturen planar ut")
+    t0 = time.time()
+    last = picam2.capture_metadata().get("SensorTemperature", float("nan"))
+    if last != last:
+        print("  sensorn rapporterar ingen temperatur; vantar 15 min blint")
+        time.sleep(900)
+        return
+    # Sampled every 30 s rather than every minute: if the service has been
+    # holding the camera open, it is already warm and this is a check rather
+    # than a wait -- the sensor loses only a fraction of a degree in the seconds
+    # between stopping the service and starting here.
+    stable = 0
+    while time.time() - t0 < args.warmup_max * 60:
+        time.sleep(30)
+        t = picam2.capture_metadata().get("SensorTemperature", float("nan"))
+        rise = t - last
+        stable = stable + 1 if abs(rise) < 0.6 else 0
+        print(f"  {(time.time()-t0)/60:5.1f} min   {t:.0f} C  ({rise:+.0f})"
+              + ("   stabil" if stable else ""), flush=True)
+        last = t
+        if stable >= 2:
+            print(f"  jamvikt vid {t:.0f} C efter {(time.time()-t0)/60:.0f} min\n")
+            return
+    print(f"  planade aldrig ut inom {args.warmup_max:.0f} min\n")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--distance", type=float, help="known distance, mm")
     p.add_argument("--append", metavar="FILE")
     p.add_argument("--fit", metavar="FILE")
+    p.add_argument("--session", metavar="FILE",
+                   help="keep the camera open and take a point on request, so "
+                        "the whole series shares one thermal state")
+    p.add_argument("--warmup-max", type=float, default=25.0,
+                   help="minutes allowed for the temperature to level off")
     p.add_argument("--runs", type=int, default=8,
                    help="AF cycles per point, alternating the parking position")
     p.add_argument("--af-range", type=int, default=2, choices=(0, 1, 2),
@@ -103,8 +144,8 @@ def main() -> int:
     if args.fit:
         report(args.fit)
         return 0
-    if args.distance is None:
-        p.error("--distance kravs om inte --fit anges")
+    if args.distance is None and not args.session:
+        p.error("--distance kravs om inte --fit eller --session anges")
 
     from picamera2 import Picamera2
     from libcamera import controls
@@ -119,8 +160,10 @@ def main() -> int:
                          "ColourGains": (0.94, 1.01)})
     picam2.start()
     time.sleep(1.5)
+    warm_up(picam2, args)
     lamp.acquire()
     time.sleep(1.2)
+    t_start = picam2.capture_metadata().get("SensorTemperature", float("nan"))
 
     lo, hi, seq = [], [], []
     try:
@@ -157,16 +200,23 @@ def main() -> int:
             if ok:
                 seq.append((i, park, lp))
                 (lo if park == args.park_low else hi).append(lp)
+        t_end = picam2.capture_metadata().get("SensorTemperature", float("nan"))
     finally:
         picam2.stop()
         lamp.shutdown()
+
+    if t_start == t_start and t_end == t_end and t_end - t_start > 1.0:
+        print(f"\nsensortemperatur {t_start:.0f} -> {t_end:.0f} C  "
+              f"({t_end-t_start:+.0f})")
+        print("  ** KAMERAN AR INTE VARM ** punkten sparas inte")
+        return 1
 
     v = np.array(lo + hi)
     if len(v) < 3:
         print("\nfor fa lyckade konvergeringar for att saga nagot")
         return 1
     print(f"\n{len(v)}/{args.runs} lyckade   medel {v.mean():.4f}   "
-          f"1sigma {v.std(ddof=1):.4f} dpt")
+          f"1sigma {v.std(ddof=1):.4f} dpt   sensor {t_end:.0f} C")
     if lo and hi:
         # Hysteresis would show as a split between the two parking directions,
         # not as extra scatter, so it has to be looked for separately.
