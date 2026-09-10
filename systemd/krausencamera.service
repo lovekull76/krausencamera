@@ -1,0 +1,46 @@
+[Unit]
+Description=Krausencamera: live view, frame A archive and ranging
+Documentation=https://github.com/lovekull/krausencamera
+After=network-online.target
+Wants=network-online.target
+
+# Escalation. A camera whose CSI link times out cannot be recovered inside the
+# process, so the process exits with 17 and systemd restarts it -- usually
+# enough, since picamera2 re-probes the sensor on startup. If that fails five
+# times in ten minutes the fault is below the process, and only a reboot clears
+# a wedged CSI receiver.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+StartLimitAction=reboot
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/krausencamera
+
+# Edit the arguments here, not in a shell script: this file is the record of
+# how the instrument is actually configured.
+ExecStart=/usr/bin/python3 /home/pi/krausencamera/liveview.py \
+    --no-laser \
+    --snapshot-dir /home/pi/frames \
+    --snapshot-interval 300 \
+    --snapshot-exposure-us 15000 \
+    --lens-position 5.58 \
+    --pdaf-every 2
+
+Restart=always
+RestartSec=10
+
+# Journald rather than a file: rotation, timestamps and journalctl --since come
+# free, and the analysis reads it the same way.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=krausencamera
+
+# The lamp and laser are GPIO, so no privileges beyond the gpio group are needed.
+# Left unsandboxed on purpose -- picamera2 wants /dev/video*, /dev/dma_heap and
+# CMA, and a tight sandbox here costs more debugging than it buys.
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

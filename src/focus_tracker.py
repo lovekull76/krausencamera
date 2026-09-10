@@ -196,6 +196,11 @@ class FocusTracker:
         # exit loudly so a supervisor can restart the whole thing.
         self._fails = 0
         self._max_fails = 3
+        # Wall clock of the last cycle that actually produced something.
+        # The failure counter above only fires on exceptions; a camera
+        # that hangs inside capture_array never raises, and the process
+        # would sit there forever. A watchdog reads this instead.
+        self.last_ok = time.time()
         if snapshot_dir:
             os.makedirs(snapshot_dir, exist_ok=True)
 
@@ -458,6 +463,7 @@ class FocusTracker:
                 try:
                     self.snapshot_only()
                     self._fails = 0
+                    self.last_ok = time.time()
                 except Exception:
                     self._fails += 1
                     log.exception("frame A failed (%d in a row)", self._fails)
@@ -485,6 +491,7 @@ class FocusTracker:
                     log.warning("laser range: no spot in the band")
                 else:
                     self._apply(spot)
+                    self.last_ok = time.time()
                     # After _apply, never before: the focus it just set changes
                     # the magnification by 0.68 %/dioptre, so a frame captured
                     # first is at a different scale from every later one. That

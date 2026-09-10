@@ -601,8 +601,34 @@ def main() -> int:
         )
         Handler.tracker = tracker
         tracker.start()
-        log.info("autofocus on: ranging every %.0f s, moving past %.1f dpt",
-                 args.af_interval, args.af_threshold)
+
+        def watchdog(t, period):
+            """Exit if the camera stops producing, even without raising.
+
+            The tracker's own failure counter needs an exception. A wedged CSI
+            link can instead hang inside capture_array, and then nothing raises,
+            nothing counts, and the process serves an empty stream until someone
+            notices -- which once took five hours.
+            """
+            import os as _os
+            while True:
+                time.sleep(30.0)
+                idle = time.time() - t.last_ok
+                if idle > period:
+                    log.critical("watchdog: no successful cycle for %.0f s "
+                                 "(limit %.0f) -- exiting for a restart", idle, period)
+                    _os._exit(17)
+
+        period = max(args.af_interval, args.snapshot_interval) * 3 + 120
+        threading.Thread(target=watchdog, args=(tracker, period),
+                         daemon=True).start()
+        log.info("watchdog: exit if no cycle completes within %.0f s", period)
+        if args.no_laser:
+            log.info("no laser: frame A every %.0f s, no ranging",
+                     args.snapshot_interval)
+        else:
+            log.info("autofocus on: ranging every %.0f s, moving past %.1f dpt",
+                     args.af_interval, args.af_threshold)
 
     httpd = Server(("", args.port), Handler)
     log.info("live view on http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",
