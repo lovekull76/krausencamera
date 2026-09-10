@@ -251,7 +251,7 @@ def main() -> int:
 
     if args.append:
         with open(args.append, "a") as fh:
-            fh.write(f"{args.distance:.1f},{v.mean():.5f},{v.std(ddof=1):.5f}\n")
+            fh.write(f"{args.distance:.2f},{v.mean():.5f},{v.std(ddof=1):.5f}\n")
         print(f"  -> {args.append}")
     return 0
 

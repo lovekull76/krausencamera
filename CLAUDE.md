@@ -332,7 +332,7 @@ there means foam against the lid. The model's offset absorbs a constant, so only
 the spacing between heights has to be accurate.
 
 ```
-dpt = 1.0097 + 787.0/(d + 18.44)          eight points, 53 to 181 mm
+dpt = 0.984 + 794.3/(d + 19.06)           eight points, 53 to 181 mm
 ```
 
 **The model form depends on the range.** Over 109-181 mm a two-parameter
@@ -342,8 +342,16 @@ the other way:
 
 | | fit rms | LOO max | LOO rms |
 |---|---|---|---|
-| `b/(d+c)` | 0.0911 dpt | 5.72 mm | 2.73 mm |
-| `a + b/(d+c)` | **0.0418** | **2.14** | **1.63** |
+| `b/(d+c)` | 0.0882 dpt | 5.58 mm | 2.65 mm |
+| `a + b/(d+c)` | **0.0408** | **2.12** | **1.58** |
+
+The choice survived two corrections that might have overturned it: the
+53.44 mm point was re-measured once its target was glued down (the mean
+moved 0.18 mm, the scatter improved from 0.041 to 0.032 dpt), and the CSV
+was writing distances to one decimal, throwing away the hundredths Love had
+measured with a caliper. Neither moved the leave-one-out figures by more
+than 0.08 mm. It is the *range* that demands the third parameter, not any
+single point.
 
 One hyperbola cannot carry the curvature from 53 to 181 mm. The near point was
 measured to test exactly that, and it failed the seven-point model's prediction
