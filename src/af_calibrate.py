@@ -13,8 +13,14 @@ difference, and no explanation is needed.
 The lamp is 850 nm, so this is automatically an IR calibration. A daylight one
 would not transfer: the focal plane for 850 nm is not where it is for visible.
 
-Each point alternates the parking position between low and high so that any
-VCM hysteresis shows up as a split rather than hiding in the scatter.
+Parking alternates low/high/high/low rather than low/high/low/high. A plain
+alternation puts every high-park later than every low-park on average, so a rig
+that is still settling produces a drift that reads as hysteresis -- measured
+once at -0.0225 dpt, of which -0.0115 was simply the trend. The balanced order
+cancels a linear drift exactly.
+
+A drift inside one run means the rig has not settled and the point's mean is
+wrong by however far it moved, so the trend is reported and flagged.
 
     python3 af_calibrate.py --distance 150 --append af.csv
     ...repeat at several heights...
@@ -112,11 +118,13 @@ def main() -> int:
     lamp.acquire()
     time.sleep(1.2)
 
-    lo, hi = [], []
+    lo, hi, seq = [], [], []
     try:
         print(f"{'fran':>7} {'tillstand':>10} {'s':>5} {'dpt':>9}")
+        # low, high, high, low -- balanced against a linear drift
+        pattern = [args.park_low, args.park_high, args.park_high, args.park_low]
         for i in range(args.runs):
-            park = args.park_low if i % 2 == 0 else args.park_high
+            park = pattern[i % 4]
             picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,
                                  "LensPosition": park})
             time.sleep(1.8)
@@ -135,7 +143,8 @@ def main() -> int:
                   f"{time.time()-t0:5.1f} " + (f"{lp:9.4f}" if ok else " " * 9),
                   flush=True)
             if ok:
-                (lo if i % 2 == 0 else hi).append(lp)
+                seq.append((i, park, lp))
+                (lo if park == args.park_low else hi).append(lp)
     finally:
         picam2.stop()
         lamp.shutdown()
@@ -156,7 +165,22 @@ def main() -> int:
               f"skillnad {split:+.4f} dpt"
               + (f"  ({abs(split)/pooled:.1f}x spridningen)" if pooled == pooled else ""))
     sens = 1000.0 / v.mean() ** 2
-    print(f"  precision vid {args.distance:.0f} mm: {v.std(ddof=1)*sens:.3f} mm")
+    idx = np.array([q[0] for q in seq], float)
+    val = np.array([q[2] for q in seq])
+    detr = val
+    if len(val) > 3:
+        k = np.polyfit(idx, val, 1)[0]
+        detr = val - np.polyval(np.polyfit(idx, val, 1), idx)
+        span = k * (idx[-1] - idx[0])
+        print(f"  trend inom korningen {span:+.4f} dpt ({span*sens:+.2f} mm)")
+        if abs(span) > 2.5 * detr.std(ddof=1):
+            print(f"  ** RIGGEN SATTER SIG FORTFARANDE ** trenden ar "
+                  f"{abs(span)/detr.std(ddof=1):.1f}x det avtrendade bruset.")
+            print(f"     Punktens medelvarde ar fel med storleksordningen "
+                  f"{abs(span)*sens/2:.2f} mm. Vanta och mat om.")
+    print(f"  precision vid {args.distance:.0f} mm: {v.std(ddof=1)*sens:.3f} mm"
+          + (f"   (avtrendad {detr.std(ddof=1)*sens:.3f} mm)"
+             if len(val) > 3 else ""))
 
     if args.append:
         with open(args.append, "a") as fh:
