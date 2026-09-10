@@ -325,6 +325,61 @@ takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
 directions. Most of that is pipeline latency, not the actuator. The old
 `0.35 + 0.04/dioptre` sampled inside the transition.
 
+## ⚠️ RESOLVED: the camera module was coming off its own PCB (2026-09-10)
+
+The Camera Module 3's sensor-and-lens package is held to its PCB by **thick
+double-sided tape**, with a short flex acting as a hinge. In vertical mounting —
+looking straight down, which is the whole point of this instrument — that tape
+creeps under the package's own weight and the module slowly hinges away. Love
+found it while changing housings: the module was visibly detached and hanging.
+`evidence/module-detached-from-pcb-20260910.jpg` (gitignored, local only).
+
+**A printed shim under the module, pressing it flat against the PCB, fixes it.**
+Measured on the same target with the same method:
+
+| | no shim | with shim |
+|---|---|---|
+| drift, first hours | −14.65 px/h | **−0.33 px/h** |
+| drift, total | −43 px / 18 h | **−0.95 px / 7.7 h** |
+| PDAF, best quarter | 0.0107 dpt | **0.0081 dpt** |
+| PDAF convergence | 70/70 | 46/46 |
+
+Forty times less movement. The remaining 0.06 px/h is a few times the 0.025 px
+frame-to-frame noise.
+
+### It explains every symptom, and kills two of my own conclusions
+
+- **the drift** — tape creeping under gravity: viscoelastic, decaying, partly
+  springing back, over days. Exactly the curve shape measured, `dx` overshooting
+  and returning included.
+- **the field-dependent residual** — 1.15 px left after the best rigid
+  transform, 23x the noise and growing towards the field edges. That was read at
+  the time as "the optics are moving inside the module", which was right.
+- **the light loss** — the old camera passed half what its aperture predicted. A
+  displaced module vignettes against the tube.
+- **the 3.6 degree pointing error** — the whole module tilted, sensor and lens
+  together, so lens-against-sensor stayed square and Scheimpflug stayed quiet.
+  That is why the pointing showed up while the focal plane did not tilt.
+
+> **Retracted: "the drift tracks the print's age."** Every new housing also meant
+> a newly mounted camera, so "hours since printing" and "hours since the module
+> was hung vertically" were the same variable in all of my data. Housing 1 did
+> not drift because its tape had already settled, not because its plastic had.
+> The annealing work followed from that confounded correlation.
+>
+> **This run cannot formally separate them** — the housing was annealed *and*
+> shimmed at once, which is the confound I warned against two days earlier and
+> then walked straight into. But the mechanism here was *seen*, not inferred,
+> and a photograph of a detached module outweighs a correlation.
+
+### Consequences for the build
+
+- **Every housing needs the shim**, and it belongs in the printed part rather
+  than as a separate piece. This is not a fault of one module; it is how they
+  are all made.
+- Any camera that has hung vertically for days without one should be assumed to
+  have moved, and anything calibrated against it re-measured.
+
 ## The drift tracks the print's age, not the camera (2026-09-08)
 
 Two independent faults appeared on the same day and were conflated for two days,

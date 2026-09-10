@@ -190,6 +190,12 @@ class FocusTracker:
         self._cycles = 0
         self.pdaf_mm = None
         self._laser_fitted = laser_fitted
+        # A camera whose CSI link times out leaves picamera2 unable to
+        # recover, and the process carries on serving nothing. That went
+        # unnoticed for five hours once. Count consecutive failures and
+        # exit loudly so a supervisor can restart the whole thing.
+        self._fails = 0
+        self._max_fails = 3
         if snapshot_dir:
             os.makedirs(snapshot_dir, exist_ok=True)
 
@@ -451,8 +457,17 @@ class FocusTracker:
             while not self._stop.is_set():
                 try:
                     self.snapshot_only()
+                    self._fails = 0
                 except Exception:
-                    log.exception("frame A failed")
+                    self._fails += 1
+                    log.exception("frame A failed (%d in a row)", self._fails)
+                    if self._fails >= self._max_fails:
+                        log.critical("camera has not delivered a frame in %d "
+                                     "attempts -- exiting so it can be restarted. "
+                                     "A CSI frontend timeout cannot be recovered "
+                                     "in-process; reseat the ribbon if it repeats.",
+                                     self._fails)
+                        os._exit(17)
                 n += 1
                 # Phase detection needs no laser, so it is the only distance
                 # available on a rig without one -- and it costs a few seconds.
