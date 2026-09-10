@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import io
 import logging
+import os
 import socketserver
 import sys
 import threading
@@ -545,6 +546,11 @@ def main() -> int:
                         "about half the measured depth of field)")
     p.add_argument("--snapshot-dir",
                    help="save frame A here after each ranging cycle")
+    p.add_argument("--maintenance-flag",
+                   default=os.path.join(os.path.dirname(
+                       os.path.abspath(__file__)), "MAINTENANCE"),
+                   help="while this file exists the service idles without "
+                        "opening the camera, so scripts can use it")
     p.add_argument("--no-laser", action="store_true",
                    help="no laser fitted: take frame A on the snapshot "
                         "interval and skip ranging entirely")
@@ -571,6 +577,20 @@ def main() -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
+
+    # Maintenance mode, checked before the camera is opened. Under systemd a
+    # collision over the camera is not merely annoying: the service fails in a
+    # couple of seconds, restarts every ten, and burns StartLimitBurst in about
+    # a minute -- which reboots the Pi in the middle of whatever you were doing.
+    # With the flag in place the service stays up holding nothing, and resumes
+    # by itself when the flag goes away.
+    if args.maintenance_flag and os.path.exists(args.maintenance_flag):
+        log.warning("maintenance flag %s present: camera released, "
+                    "waiting. Remove it to resume.", args.maintenance_flag)
+        while os.path.exists(args.maintenance_flag):
+            time.sleep(5.0)
+        log.info("maintenance flag gone -- exiting so systemd restarts us")
+        return 0
 
     lamp = Lamp("IR illumination", args.led_pin)
     laser = Lamp("laser", args.laser_pin, settle_s=0.1)

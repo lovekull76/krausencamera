@@ -33,3 +33,28 @@ the Pi.
 
 Measured on 2026-09-10: a frontend timeout stopped the camera at 06:26 and went
 unnoticed until 11:30, because the process stayed up and served an empty stream.
+
+## Working on it while the service runs
+
+The service holds the camera. Anything else that wants it -- `tilt_probe.py`,
+`focus_sweep.py`, `exposure_probe.py` -- will fail while it is up.
+
+**Do not `pkill` it.** systemd restarts it within ten seconds, it fails to get
+the camera in about two, and five of those inside ten minutes trips
+`StartLimitAction=reboot`. The Pi reboots roughly a minute later.
+
+Use the flag instead:
+
+```bash
+ssh krausencamera 'touch ~/krausencamera/MAINTENANCE'
+ssh krausencamera 'sudo systemctl restart krausencamera'   # releases the camera
+# ... run whatever you like ...
+ssh krausencamera 'rm ~/krausencamera/MAINTENANCE'          # resumes by itself
+```
+
+With the flag in place the service stays `active` but never opens the camera, so
+there is no restart loop and nothing to remember to undo. Removing the flag
+makes it exit cleanly, and systemd starts it again in normal operation.
+
+`systemctl stop krausencamera` works too and is fine for a quick job -- the flag
+is for when you might forget, or when the Pi could reboot in between.
