@@ -332,13 +332,29 @@ there means foam against the lid. The model's offset absorbs a constant, so only
 the spacing between heights has to be accurate.
 
 ```
-dpt = 1083.6/(d + 40.58)        d = 1083.6/dpt − 40.58
+dpt = 1.0097 + 787.0/(d + 18.44)          eight points, 53 to 181 mm
 ```
 
-The fitted 40.58 mm places the lens plane just outside the housing face, which
-sits 41 mm above the lid. That number was not put in; it fell out of the fit, and
-landing within a millimetre of where the optics physically are is the best check
-available that the model means something.
+**The model form depends on the range.** Over 109-181 mm a two-parameter
+`b/(d+c)` predicted better than three — leave-one-out 1.44 against 1.38 mm — so
+the additive term looked like overfitting. Adding a point at 53.44 mm settled it
+the other way:
+
+| | fit rms | LOO max | LOO rms |
+|---|---|---|---|
+| `b/(d+c)` | 0.0911 dpt | 5.72 mm | 2.73 mm |
+| `a + b/(d+c)` | **0.0418** | **2.14** | **1.63** |
+
+One hyperbola cannot carry the curvature from 53 to 181 mm. The near point was
+measured to test exactly that, and it failed the seven-point model's prediction
+by 3.77 mm before it improved anything.
+
+> **A check was lost in the trade.** The two-parameter fit put the lens plane
+> 40.58 mm above the lid, and the housing face sits at 41 — a number nobody
+> supplied, landing within a millimetre of where the optics are. With three
+> parameters it becomes 18.44 mm plus a 1.01 dpt additive term, which may be a
+> real VCM zero offset but corresponds to nothing measurable. More parameters
+> fit better and mean less.
 
 | from the lid | dpt | precision |
 |---|---|---|
