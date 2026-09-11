@@ -674,6 +674,8 @@ $ztn/$ztm = 0 / 150              up blocked, 150 mm down
 | positioning **within** one session | **0.02 mm** |
 | across a re-homing | ~0.1 mm |
 | scale | 8.0 mm/rev, good to 0.1 % |
+| round trip, 0 -> 200 -> 5 mm | **0.04 mm**, no steps lost |
+| full travel verified | 200 mm down at 100, back up at 400 mm/min |
 | the block stack it replaces | 0.2-0.35 mm |
 
 **So home once per session and never again.** Within a session the stage is five
@@ -684,6 +686,14 @@ caliper resolves perhaps 0.04 mm, so treat them as indicative.
 
 The error does not look like scale: 0.06 mm over 40 mm but 0.14 over 20. That is
 an offset -- backlash, or where the homing lands -- not a pitch error.
+
+**The scale is left at the nominal 8.0.** Two measurements disagree about which
+way to correct it: 40.04 against a commanded 40 with a caliper (+0.1 %), and
+199.55 against a commanded 200 with a long scale rigged provisionally
+(-0.22 %). Correcting on either would be chasing the instrument rather than the
+screw. 0.2 % is 0.4 mm across the full range, and it is the one error that does
+**not** cancel when height is taken as a difference -- but on a 30 mm krausen it
+contributes 0.06 mm, below everything else in the chain.
 
 ### What the stage is for
 
