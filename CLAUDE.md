@@ -564,6 +564,69 @@ temperature criterion was not merely implemented wrongly; it watched a quantity
 that by construction settles before the one that matters. A half-hour time
 constant also argues the tape is not thermally conductive.
 
+### The garage door, measured properly: 0.61 mm per degree of air
+
+2026-09-11. The overnight session was still running at a fixed 108.16 mm, rig
+untouched, when the door was opened to take the car out -- 72 seconds, from
+07:54:24 to 07:55:36, onto 6 C outside. The FTX extract-air sensor sits directly
+above the rig and logs at far higher resolution than anything used before.
+
+```
+garage air   22.2 -> 20.9 C at 07:57, back to 21.9 by 08:09
+
+before the door    6 pts   -0.19 mm
+trough 07:57-08:07 4 pts   -0.98 mm
+recovered 08:15+  10 pts   -0.44 mm
+
+dip        -0.79 mm +- 0.06    12.6 sigma
+recovery   +0.54 mm +- 0.02    27.2 sigma
+```
+
+**It dipped and came back.** That is the reversal test: settling can fall but
+cannot rise again, and no trend reverses on cue from a door. What remains
+against the starting point is -0.24 mm, of which -0.09 is the known creep of
+0.134 mm/h over the forty minutes.
+
+**0.61 mm per degree of garage air** at this distance.
+
+> **The lag is the tape, measured.** The air bottomed at 07:57 and the reading
+> at 07:58-08:03; the air was back by 08:09 and the reading by 08:16. The optics
+> trail the air by three to seven minutes and recover more slowly than it does
+> -- a thermal mass behind an insulating layer. Over the whole excursion
+> `SensorTemperature` moved **one count**, 58 -> 57 -> 58. It could never have
+> revealed this.
+
+**So `SensorTemperature` is the wrong covariate.** It is quantised to whole
+degrees by the sensor itself, and a degree is worth over a millimetre, so it
+cannot even see an event that moves the measurement 0.8 mm. The FTX extract
+temperature can: high resolution, sited above the rig, and measuring the
+quantity that actually drives the error.
+
+Consequences for taking a table: **the garage has to be thermally quiet**, with
+no door, and twenty minutes of grace after any disturbance, because the optics
+lag. A 15-second door opening at 08:33 left no visible trace, so the threshold
+is somewhere between that and a 72-second one.
+
+### The stack was still creeping after seven hours
+
+87 points at 108.16 mm overnight, rig untouched:
+
+```
+total            -3.34 mm over 7.2 h
+  first 17 min   -2.0 mm
+  the tail       -1.3 mm over the remaining seven hours
+last 4 hours     -0.134 mm/h,  scatter 0.172 mm
+```
+
+A rebuilt stack does not settle in minutes, and it had not finished in a night.
+The tail is in the same class as the printed housing's own 9.5 hour relaxation.
+
+**But settling and cooling are confounded over that window** -- the sensor went
+61 -> 59 -> 58 C as the garage cooled, both monotonic, so fitting the reading
+against temperature returns 0.74 mm/C and means nothing. Separating them needs
+the garage's own log, which the door event has now shown is the covariate worth
+having.
+
 ### The door was a red herring, but only after dark
 
 Love found the rig's side door had been open, probably for hours, letting
