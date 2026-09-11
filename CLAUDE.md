@@ -652,6 +652,99 @@ What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
 
+## The target stage: an Ultimaker 2 Z axis on a TinyG (2026-09-11)
+
+Loose blocks are gone. The stage is the UM2's Z mechanism -- trapezoidal screw,
+nut fixed to the platform, motor and screw in the chassis -- driven by a TinyG
+v8 over USB from the Pi.
+
+```
+$3tr = 8.0      T8x8, measured 8.008 over 40 mm -- nominal kept, see below
+$3pm = 3        coil dead the moment a move ends
+$st  = 0        NO switch (the one to hand was already terminated NO)
+$zsn = 3        min-end switch: limit + homing
+$zsv/$zlv = 200 / 25 mm/min      search / latch
+$zlb/$zzb = 3 / 5 mm             latch backoff / zero backoff
+$ztn/$ztm = 0 / 150              up blocked, 150 mm down
+-Z is up, +Z is down, away from the lid-mounted camera
+```
+
+| | |
+|---|---|
+| positioning **within** one session | **0.02 mm** |
+| across a re-homing | ~0.1 mm |
+| scale | 8.0 mm/rev, good to 0.1 % |
+| the block stack it replaces | 0.2-0.35 mm |
+
+**So home once per session and never again.** Within a session the stage is five
+times better than the camera it exists to measure; across a homing it is merely
+comparable, so re-homing mid-series would inject about as much error as the AF's
+own noise. Every figure above is a single caliper reading against a rig, and the
+caliper resolves perhaps 0.04 mm, so treat them as indicative.
+
+The error does not look like scale: 0.06 mm over 40 mm but 0.14 over 20. That is
+an offset -- backlash, or where the homing lands -- not a pitch error.
+
+### What the stage is for
+
+Not convenience. **A height can be returned to**, which makes bracketing
+possible: measure A, B, A, C, A, and the repeated A says what the camera did
+while the table was taken. Drift that can be measured can be subtracted, and the
+camera's multi-hour drift is the one thing still unexplained. With loose blocks a
+height could never be revisited, so camera drift and rig error could not be
+separated at all.
+
+### Reach every height from below
+
+These screws have backlash of a tenth of a millimetre, larger than everything
+else left in the chain, so the approach direction has to be consistent:
+overshoot past the target and finish moving up.
+
+> I first argued that gravity preloads the nut against one flank so direction
+> cannot matter, and that finishing upward would let the platform fall back when
+> the coil releases. Love's answer was that friction here exceeds the platform's
+> weight. Then the platform slid down the moment a measuring scale was rested on
+> it -- so friction does **not** dominate, and neither of us had it right. It is
+> a T8x8: four starts, 8 mm lead, far too steep to self-lock.
+
+**Homing's own last move is downward** -- the `$zzb` retreat from the switch --
+which is the opposite of every measurement approach. Love caught that. `home()`
+now finishes by dropping 10 mm and coming back up to zero, so Z0 is defined the
+same way as every other height.
+
+### The evening's three crashes, and what they have in common
+
+The platform hit the ceiling twice and crushed a few things, and a lost zero cost
+an hour. None of them was a mechanical failure.
+
+**The board reports success unconditionally.** It counts steps and has no idea
+what the axis did. Twice the reality was ten millimetres in the wrong direction
+while the status report read exactly as it does when everything works.
+
+**A soft limit is only as good as the zero it is measured from.** Three times a
+limit protected the wrong end -- twice because the sign convention was assumed
+rather than tested, once because a reset had silently discarded the machine
+position. So: **never assume the direction, prove it inside a window where a
+wrong sign cannot do damage.** Zero where the table stands, clamp to +/-2 mm,
+command 1 mm, ask which way it went, and only then open the limit -- in the safe
+direction only.
+
+**An alarm latches and refuses everything afterwards**, including `G21 G90`,
+which makes a sulking board look like a dead one. Clearing it releases whatever
+is still queued, so the order is feedhold, flush, *then* clear. Status 203 or 220
+on a command that cannot fail is the signature.
+
+**A reset keeps the `$` settings and discards the machine position.** Everything
+in EEPROM survives; the zero does not. After any reset, re-zero before anything
+moves, because the soft limits are now measured against a zero that no longer
+exists.
+
+> And `pkill -f` bit twice more. `[t]tyUSB0` protects the pattern from matching
+> itself but not from matching the same text elsewhere on the command line --
+> the ssh invocation carried `/dev/ttyUSB0` inside its own Python, so the kill
+> took out its own session while a stage was moving. Match something that exists
+> only in the target process.
+
 ### The door was a red herring, but only after dark
 
 Love found the rig's side door had been open, probably for hours, letting
