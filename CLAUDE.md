@@ -607,25 +607,49 @@ no door, and twenty minutes of grace after any disturbance, because the optics
 lag. A 15-second door opening at 08:33 left no visible trace, so the threshold
 is somewhere between that and a 72-second one.
 
-### The stack was still creeping after seven hours
+### ⚠️ Retracted: "the stack was still creeping". The rig never moved.
 
-87 points at 108.16 mm overnight, rig untouched:
+87 points at a fixed 108.16 mm overnight showed the reading fall 3.85 mm over
+8.3 hours, and I attributed it to the rebuilt stack settling, with a fitted
+2.08 hour time constant. Love said a decimetre of particle board cannot settle
+three millimetres -- 3 % compression -- and asked which way the drift went.
+
+It is away from the camera, and there is a free test for that. **Illumination
+falls as the inverse square**, so a target receding 3.85 mm at 108 mm must go
+6.8 % darker. The exposure sat at 8000 us all night, so the level logged with
+every point is directly comparable across all 87:
 
 ```
-total            -3.34 mm over 7.2 h
-  first 17 min   -2.0 mm
-  the tail       -1.3 mm over the remaining seven hours
-last 4 hours     -0.134 mm/h,  scatter 0.172 mm
+if the target really moved to 112.01 mm
+  level should have fallen  -6.8 %   ->  87.5
+  level actually moved      +0.5 %   ->  93.3
+
+scatter in the level, all night   0.11 %  =  0.06 mm of distance
 ```
 
-A rebuilt stack does not settle in minutes, and it had not finished in a night.
-The tail is in the same class as the printed housing's own 9.5 hour relaxation.
+**The target held still to a tenth of a millimetre. The entire drift is in the
+camera.** With f = 4.74 mm and an image distance near 4.95 mm, 0.164 dioptres is
+about **4 micrometres** of change between lens and sensor -- invisible, and
+equally plausible as thermal expansion or as creep in the module's tape.
 
-**But settling and cooling are confounded over that window** -- the sensor went
-61 -> 59 -> 58 C as the garage cooled, both monotonic, so fitting the reading
-against temperature returns 0.74 mm/C and means nothing. Separating them needs
-the garage's own log, which the door event has now shown is the covariate worth
-having.
+> The number was already in the file. `niva` was added so the automatic exposure
+> could be audited afterwards; it is also an independent, photometric distance
+> measurement, calibrated by the inverse square. The data to refute the
+> conclusion was sitting in the column next to it.
+
+**This is far worse than a settling fixture.** A jig gets dismantled; this
+follows the instrument into service, and a fermentation runs for days.
+
+**And the equilibrium test cannot see it.** The overnight drift is
+**-0.0197 dpt/h**, below the 0.03 dpt/h threshold `warm_up()` uses to declare the
+camera settled. A criterion tuned against a thirty-minute warm-up is blind to a
+tail measured in hours. The test is not wrong for what it was built for -- it
+stops the 10.9 mm cold-start error -- but it must not be read as proof that the
+camera has stopped moving.
+
+What separates the two mechanisms is that **temperature is reversible and creep
+is not**. The garage warms through the day; if the reading comes back up, it is
+thermal. The session was left running to find out.
 
 ### The door was a red herring, but only after dark
 
