@@ -516,23 +516,24 @@ they explain the old table's residual wave without needing any model deficiency.
 | | worth | fixed by |
 |---|---|---|
 | camera not thermally settled | 10.9 mm from cold | holding the camera open, 32 min once |
-| **rebuild settling** | **1-2 mm, rate varies 8x** | repeat until two readings agree |
+| rebuild settling | 0.2-0.35 mm | a short wait; it is not the problem |
+| **camera drift, hours-long tail** | **~4 mm over 8 h** | not solved -- see the retraction below |
 | **ambient cooling** | ~1 mm per degree | randomise the height order |
 
-**Rebuild settling is not a fixed wait.** Two stacks behaved completely
-differently:
+**Rebuild settling is real but small.** Two repeats looked like fast settling --
+1.79 mm over eight minutes at 90.15, 1.01 mm over 110 seconds at 108.16 -- and
+were recorded as such. The photometric check says otherwise: the illumination
+level moved only a fraction of what those distances demand.
 
 ```
-90.15 mm   3 to 8 min after the rebuild    -0.33 mm over 292 s   =  -4 mm/h
-108.16 mm  4 to 6 min after the rebuild    -1.01 mm over 110 s   = -33 mm/h
+              apparent (focus)   actual (photometric)
+  90.15 mm         +1.79 mm            +0.21 mm
+ 108.16 mm         +1.01 mm            +0.35 mm
 ```
 
-Eight times the rate, four minutes in, on the same blocks. A fixed settling
-pause is therefore guesswork -- the 90 mm stack looked settled after three
-minutes and the 108 mm one was still running away after four. **The only
-protocol that works is to measure again until two consecutive readings agree**,
-however long that takes. The direction is always the same: dioptres fall, so the
-target sinks away from the lid.
+So a rebuilt stack moves **0.2-0.35 mm**, which agrees with the 0.3 mm the
+caliper sees, and the remaining 65-88 % is the camera drifting. The fixture is
+sound; a threaded column or preloaded spacers would solve nothing.
 
 **Ambient is the third one, and holding the camera open does not touch it.** The
 sensor read 63, 62, 62, 61, 61, 61, 60 C across the session as the garage cooled
