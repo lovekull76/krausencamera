@@ -283,6 +283,21 @@ def take_point(picam2, controls, args):
             seq.append((i, park, lp))
             (lo if park == args.park_low else hi).append(lp)
     t_end = picam2.capture_metadata().get("SensorTemperature", float("nan"))
+    # Park the lens before walking away. The VCM holds whatever position AF
+    # left it at, and the holding current -- and so the module's temperature --
+    # depends on how far that is from rest. Measured overnight 2026-09-12:
+    # +0.96 C per dioptre, which over the 4 to 14 dpt the table spans is nearly
+    # ten degrees. At 0.066 dpt/C that is 0.63 dioptres of induced drift, dwarfing
+    # everything the measurement is trying to resolve.
+    #
+    # It is also a feedback loop: the lens position sets the temperature, the
+    # temperature sets the reading, and the reading sets the lens position. Gain
+    # is 0.066 * 0.96 = 0.063, so it converges rather than runs away -- but it
+    # shifts the answer, and it shifts it in the same direction as the thing
+    # being measured.
+    if args.park_after is not None:
+        picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,
+                             "LensPosition": args.park_after})
     return lo, hi, seq, t_start, t_end
 
 
@@ -567,11 +582,18 @@ def main() -> int:
                    help="0 normal, 1 macro, 2 full. Normal rails at 12.0 "
                         "dioptres; macro and full reach 15.0, which is the "
                         "lens's actual travel. Free range, so full by default.")
+    p.add_argument("--park-after", type=float, default=2.5,
+                   help="park the lens here after every point so the VCM's "
+                        "holding current -- and the module's temperature -- is "
+                        "the same between measurements whatever was measured. "
+                        "Set to a negative value to leave the lens alone.")
     p.add_argument("--park-low", type=float, default=2.5)
     p.add_argument("--park-high", type=float, default=12.0)
     p.add_argument("--exposure-us", type=int, default=15000)
     p.add_argument("--led-pin", type=int, default=17)
     args = p.parse_args()
+    if args.park_after is not None and args.park_after < 0:
+        args.park_after = None
 
     if args.fit:
         report(args.fit)

@@ -652,6 +652,101 @@ What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
 
+## ⚠️ The lens heats the camera, and that is the drift (2026-09-12)
+
+Five hours, 61 points, ten heights in randomised order with one revisited every
+third visit. The first table taken on one thermal state, in the box, at the
+service's own cadence. And the reference height answers the question the whole
+rig was built to ask.
+
+```
+d = 123.40 mm, 21 visits
+  scatter between visits   0.190 dpt = 4.9 mm
+  scatter within a visit   0.0074 dpt = 0.19 mm
+```
+
+**Twenty-five times more scatter between visits than inside them.** Nothing
+moved during a measurement; everything moved between them.
+
+### It is not ambient, not the lid, not time
+
+```
+                  change over 5 h    r against the reading    slope
+TC ferrule            +0.250 C              +0.628          48 mm/C
+box air               +0.125 C              +0.676          78 mm/C
+outside               -0.063 C              -0.233         -12 mm/C
+camera sensor         +6.000 C              +0.996         1.7 mm/C
+time                                        +0.232        0.73 mm/h
+```
+
+**The camera's own die temperature correlates at 0.996** while the DS18B20s
+barely move a quarter of a degree. The slope is 0.066 dpt/C -- the same
+coefficient measured on 2026-09-11 from completely different data.
+
+> And it reverses a judgement of my own. I dismissed `SensorTemperature` as
+> useless because it is quantised to whole degrees, and a degree is 0.63 mm.
+> That was right for the garage door, which moved the reading 0.8 mm while the
+> sensor moved one count. It is wrong here: the swing is **twelve degrees**, and
+> against that a one-degree step is eight per cent. A coarse instrument is only
+> useless relative to what it has to measure.
+
+### The lens's holding current is the source
+
+The camera temperature is set by the *previous* visit, not the current one:
+
+```
+temp against the previous lens position   r = +0.965      +0.96 C per dioptre
+temp against the previous height          r = -0.921
+temp against this visit's exposure        r = +0.051
+residual after the lens-position model     0.79 C  (from 3.01)
+```
+
+The VCM holds the lens wherever AF left it, for the whole interval between
+visits. A near target means fourteen dioptres, far from rest, drawing current
+continuously; a far one means four dioptres and almost nothing. Across the
+table's range that is **9.6 C**, which accounts for nearly all of the twelve
+degrees observed.
+
+**So it is a feedback loop**: lens position sets temperature, temperature sets
+the reading, the reading sets the lens position. The gain is
+`0.066 x 0.96 = 0.063`, well under unity, so it converges rather than runs away
+-- the same shape of answer as the autofocus/breathing loop. But it biases, and
+it biases **in the same direction as the quantity being measured**: a krausen
+rising drives the lens nearer, the camera warms, and the reading moves nearer
+still. The instrument exaggerates itself by a few per cent.
+
+**This is in the product, not just the calibration rig.** `focus_tracker` leaves
+the lens wherever AF put it between cycles, exactly like the session did.
+
+### The fix, and what the uncorrected data is still worth
+
+Park the lens at a low dioptre after every measurement, so the holding current
+between visits is the same whatever was just measured. `--park-after` (default
+2.5 dpt) does that; a negative value disables it.
+
+Until then the temperature is a covariate, and a good one. Correcting each
+reading by 0.066 dpt/C, with the coefficient estimated from the reference height
+alone where distance is constant by construction:
+
+```
+                scatter before    after
+  41.40 mm         0.94 mm       0.23 mm      4.2x
+ 123.40 mm         4.89          0.46        10.6x
+ 158.40 mm        10.00          1.45         6.9x
+ 218.40 mm         3.84          3.72         1.0x
+ overall           4.74          1.07         4.4x
+```
+
+The far end does not improve: at 218 mm one dioptre is 73 mm, so whatever
+dioptre error remains is amplified beyond rescue. That is an argument for
+parking the lens rather than correcting afterwards.
+
+> **None of this would have been visible without the reference height.** With
+> loose blocks a height could never be revisited, so a 4.9 mm swing at a fixed
+> distance was indistinguishable from the rig settling, the room cooling, or the
+> model being wrong -- which is exactly the three-way confusion that consumed
+> 2026-09-10 and 11. One repeated height separated them in a single night.
+
 ## The warm near limit is 37 mm, not 43 (2026-09-12)
 
 Measured in the light-tight box, camera warm, under the conditions the night
