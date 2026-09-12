@@ -58,7 +58,7 @@ MOVING = (5, 8, 9)         # run, cycle, homing
 
 class Stage:
     def __init__(self, port, baud=115200, timeout=2.0, zmin=0.0, zmax=200.0,
-                 motor=3):
+                 motor=3, hold=False):
         import serial                       # pyserial, apt: python3-serial
         self.ser = serial.Serial(port, baud, timeout=timeout)
         self.zmin, self.zmax = zmin, zmax
@@ -66,6 +66,13 @@ class Stage:
         # to axis 2 (Z) -- $3ma=2 -- so the power-management setting to write
         # is $3pm, not $1pm. Getting this wrong silently leaves the coil live.
         self.motor = motor
+        # Keep the coil energised between moves. The screw is a T8x8 -- four
+        # starts, 8 mm lead -- far too steep to self-lock, and the platform slid
+        # the moment a measuring scale was rested on it. Holding costs a few
+        # watts continuously, which was the reason to avoid it, but on this rig
+        # the motor sits outside the cavity below the floor with no thermal path
+        # to the optics worth the name.
+        self.hold = hold
         time.sleep(2.0)                     # FTDI settling; the board may reboot
         self.ser.reset_input_buffer()
         # Silence the unsolicited reports. They are useful to a GUI watching a
@@ -220,7 +227,17 @@ class Stage:
         self.power_off()
 
     def power_off(self):
-        """Release the motor. The screw holds; the coil would only make heat."""
+        """Release the motor -- unless holding was asked for, then re-assert it.
+
+        This is called at the end of every move, so with `hold` set it is what
+        guarantees the coil is still live afterwards rather than what cuts it.
+        Getting that backwards silently drops the hold on the one axis that
+        cannot hold itself.
+        """
+        if self.hold:
+            self.send(f"${self.motor}pm=1")
+            self.send("$me")
+            return
         self.send(f"${self.motor}pm=3")
         self.send("$md")           # motor disable, all axes
 
@@ -244,8 +261,21 @@ class Stage:
         self.reset()
         self.send("$me")
         self.send("G21 G90")
-        self.send("G28.2 Z0")
-        if not self.wait_idle(timeout=timeout, settle=1.0):
+        # Homing searches inside the travel limits, and after a board reset the
+        # machine position is 0 wherever the platform actually stands -- so
+        # $ztn=0 forbids the very direction the search has to go. Worse, the
+        # limits are now measured from a zero that does not exist: with the
+        # platform at the bottom and the board believing it is at the top, they
+        # permit a full traverse into the end stop. Widen for the search, and
+        # put them back the moment there is a real zero again.
+        old_min = self._get_mm("$ztn")
+        self.send(f"$ztn=-{abs(self.zmax) + 10:.0f}")
+        try:
+            self.send("G28.2 Z0")
+            ok = self.wait_idle(timeout=timeout, settle=1.0)
+        finally:
+            self.send(f"$ztn={old_min if old_min is not None else 0:.0f}")
+        if not ok:
             return False
         h = self.send('{"hom":null}')
         if not any('"z":1' in line for line in h):
@@ -258,6 +288,21 @@ class Stage:
             self.wait_idle(timeout=timeout)
         self.power_off()
         return True
+
+    def _get_mm(self, name):
+        """Read a travel setting back in mm, or None if it cannot be parsed.
+
+        The reply is `[ztn] z travel minimum            0.000 mm`, so the value
+        is neither last on the line nor first after the tag -- `m3` in a motor
+        setting's description starts with a digit, which is what a
+        first-number-wins rule trips over. Anchor on the unit instead.
+        """
+        import re
+        for line in self.send(name):
+            m = re.search(r"(-?\d+\.\d+)\s*mm\s*$", line.strip())
+            if m:
+                return float(m.group(1))
+        return None
 
     def zero_here(self):
         """Call the present position Z0 without homing.
@@ -287,6 +332,10 @@ def main() -> int:
                         "backlash drops out of the spacing. 0 disables.")
     p.add_argument("--zmin", type=float, default=0.0)
     p.add_argument("--zmax", type=float, default=200.0)
+    p.add_argument("--hold", action="store_true",
+                   help="keep the coil energised between moves. Needed here: "
+                        "the T8x8 does not self-lock and the platform slides "
+                        "under a modest load.")
     p.add_argument("--motor", type=int, default=3,
                    help="which driver the Z axis is wired to ($Nma=2)")
     p.add_argument("--jog", nargs=2, type=float, metavar=("A", "B"),
@@ -306,7 +355,7 @@ def main() -> int:
 
     try:
         st = Stage(args.port, args.baud, zmin=args.zmin, zmax=args.zmax,
-                   motor=args.motor)
+                   motor=args.motor, hold=args.hold)
     except Exception as e:                      # noqa: BLE001 -- report and stop
         print(f"kan inte oppna {args.port}: {e}")
         print("  OTG-adapter isatt? 'dmesg | tail' ska visa ftdi_sio och ttyUSB")
