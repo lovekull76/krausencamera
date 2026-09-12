@@ -652,6 +652,70 @@ What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
 
+## Parking the lens: the controlled comparison (2026-09-12)
+
+Two runs, identical in every respect -- same ten heights, same randomised order,
+same reference every third visit, same box, same cadence -- differing only in
+whether the lens is parked at 0 dioptres after each measurement. The first
+controlled single-variable comparison in this project; twice before, several
+things were changed at once and a conclusion had to be retracted for it.
+
+```
+                        night 1 (left)      night 2 (parked)
+camera temperature        57-69 C              56-58 C
+                       std 2.92              std 0.50
+
+reference height d=123.40
+  scatter between visits   4.70 mm             0.43 mm
+```
+
+**The twelve-degree swing collapsed to two, and the scatter fell elevenfold.**
+Every height improved:
+
+```
+      d     night 1   night 2    factor
+  41.40      0.93      0.17       5.4x
+  70.40      1.97      0.12      16.1x
+  82.40      2.85      0.07      39.5x
+ 123.40      4.53      0.42      10.9x
+ 158.40      8.26      0.04     202.7x
+ 218.40      4.25      0.66       6.5x
+```
+
+0.43 mm now sits 2.3x above the scatter *within* a visit, against 25x before.
+The feedback is broken at the source, and the mechanism is confirmed: it was
+the VCM's holding current all along.
+
+> **Two comparisons, only one of which is settled.** Scatter is measured per
+> height and directly, so four visits each is plenty and the result stands.
+> Model quality is not: night 1 has 117 measurements and nine per height,
+> night 2 forty and four, and leave-one-out punishes that. Night 2's own
+> temperature coefficient appears to give LOO 0.41 mm, but it is estimated
+> across two degrees and fitted to the data it then corrects -- with night 1's
+> independent coefficient the gain is a modest 0.96 to 0.79 mm. **Once parking
+> has removed the swing there is little left for the correction to do**, which
+> is the point of doing it at the source.
+
+### Consequences for the product
+
+`focus_tracker` leaves the lens wherever AF put it between cycles, exactly as
+the session did, so the same feedback runs in service: a krausen rising drives
+the lens nearer, the module warms, and the reading moves nearer still.
+
+**The live view has it too**, and Love spotted that: a viewer holding the page
+open holds the lens in position for as long as they watch. It is the same fault
+in a third disguise, and it may be part of why the service drifted on days when
+a browser tab had been left open. Park when the last viewer leaves, restore
+when the first arrives.
+
+> **Air cooling was considered and deferred.** Love proposed a 40 mm fan drawing
+> air axially past the module and the Pi. Two objections: the module is on
+> double-sided tape, so air over the PCB barely reaches the lens where the heat
+> is actually made -- and air drawn past the lens is dust and humidity on the
+> one surface in the instrument that has to stay clean. Cooling the Pi and the
+> buck is fine and unrelated. But the heat source is being removed rather than
+> managed, which is cheaper than any fan.
+
 ## The calibration, temperature-corrected (2026-09-12)
 
 117 measurements, ten heights in randomised order, one thermal state, in the
