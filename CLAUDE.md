@@ -652,6 +652,55 @@ What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
 
+## The calibration, temperature-corrected (2026-09-12)
+
+117 measurements, ten heights in randomised order, one thermal state, in the
+box, at the service's own cadence. The temperature coefficient is estimated
+from the reference height alone -- where the distance is constant by
+construction, so it cannot absorb any distance dependence -- and then applied
+to every reading.
+
+```
+dpt = 0.9039 + 851.3/(d + 21.74)          rms 0.0077 dpt
+correction: -0.0664 dpt per C of SensorTemperature, referred to 63.7 C
+
+      d      n     mean dpt    std err   residual
+  41.40      9     14.3945     0.07 mm    +0.04 mm
+  46.40      9     13.3953     0.10       -0.01
+  52.40      9     12.3698     0.11       -0.11
+  60.40      9     11.2733     0.19       +0.04
+  70.40      8     10.1487     0.15       +0.06
+  82.40      8      9.0768     0.19       -0.02
+  99.40      9      7.9245     0.11       -0.12
+ 123.40     39      6.7790     0.10       +0.24
+ 158.40      8      5.6330     0.43       +0.13
+ 218.40      9      4.4428     0.95       -0.41
+
+leave-one-out   max 1.15 mm   rms 0.39 mm
+```
+
+| | LOO rms |
+|---|---|
+| uncorrected, same data | 4.82 mm |
+| the nine-point table of 2026-09-10 | 1.08 mm |
+| **this** | **0.39 mm** |
+
+**The residuals now sit at the level of the standard errors** -- 0.04 against
+0.07, 0.11 against 0.11, 0.13 against 0.43. The model fits to within the
+measurement's own noise, which it has never done before on this project;
+previously the residuals ran ten times over.
+
+> **The model is valid at one temperature.** Its constants belong to the camera
+> at 63.7 C, the mean of the run. In service every reading must be corrected the
+> same way before the model is applied -- or, better, the lens parked so the
+> temperature stops moving in the first place. Applying these constants to a raw
+> reading at 57 C would be 0.44 dioptres out, which at 123 mm is 11 mm.
+
+**What still limits it is the far end.** At 218 mm one dioptre is 73 mm, so the
+standard error is 0.95 mm on nine visits and the residual 0.41. Everything
+inside 125 mm is better than 0.25 mm. If the far end matters it wants more
+visits, not a better model -- the error there is counting statistics, not fit.
+
 ## ⚠️ The lens heats the camera, and that is the drift (2026-09-12)
 
 Five hours, 61 points, ten heights in randomised order with one revisited every
