@@ -303,7 +303,12 @@ def summarise(lo, hi, seq, t_start, t_end, args, label):
               f"({t_end-t_start:+.1f})")
 
     v = np.array(lo + hi)
-    if len(v) < 3:
+    # Two is enough. It was three, which silently threw away every point taken
+    # with --runs 2 -- the whole rail hunt of 2026-09-12 wrote n_ok 2/2 beside
+    # an empty mean, and the night was about to do the same for twelve hours.
+    # A visit-based schedule wants few cycles per visit and many visits, so the
+    # per-visit scatter is not the point; the mean is.
+    if len(v) < 2:
         print(f"\n{len(v)}/{args.runs} lyckade -- for fa for att saga nagot")
         return None, None, False
     print(f"\n{len(v)}/{args.runs} lyckade   medel {v.mean():.4f}   "
@@ -444,7 +449,7 @@ def run_session(picam2, controls, args):
         fh.write(f"# session {time.strftime('%Y-%m-%d %H:%M:%S')}  "
                  f"exp {args.exposure_us} us  runs {args.runs}"
                  + (f"  d {args.distance:.2f}" if args.distance else "") + "\n")
-        fh.write("# t_s,d_mm,medel_dpt,sigma_dpt,n_ok,n_runs,sensor_C,exp_us,niva,drift\n")
+        fh.write("# tid,t_s,d_mm,medel_dpt,sigma_dpt,n_ok,n_runs,sensor_C,exp_us,niva,drift\n")
         fh.flush()
         while True:
             dist = args.distance
@@ -469,6 +474,7 @@ def run_session(picam2, controls, args):
                           f"tar punkten anda, utan avstand")
                     dist = None
             el = time.time() - t0
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
             n += 1
             print(f"\n=== punkt {n}   {el/60:5.1f} min"
                   + (f"   d {dist:.2f} mm" if dist else "") + " ===", flush=True)
@@ -485,11 +491,11 @@ def run_session(picam2, controls, args):
                 print("     ** raden markeras drift=1 i CSV:n **")
             dcol = f"{dist:.2f}" if dist else ""
             if mean is not None:
-                fh.write(f"{el:.0f},{dcol},{mean:.5f},{std:.5f},"
+                fh.write(f"{stamp},{el:.0f},{dcol},{mean:.5f},{std:.5f},"
                          f"{len(lo)+len(hi)},{args.runs},{te:.2f},"
                          f"{exp_us},{level:.1f},{int(drifted)}\n")
             else:
-                fh.write(f"{el:.0f},{dcol},,,"
+                fh.write(f"{stamp},{el:.0f},{dcol},,,"
                          f"{len(lo)+len(hi)},{args.runs},{te:.2f},"
                          f"{exp_us},{level:.1f},1\n")
             fh.flush()
@@ -627,7 +633,14 @@ def main() -> int:
         return 1
     if args.append:
         with open(args.append, "a") as fh:
-            fh.write(f"{args.distance:.2f},{mean:.5f},{std:.5f}\n")
+            # Absolute time, because the covariates live in another system.
+            # Home Assistant keeps full-resolution states for 390 days here, so
+            # the garage temperature at the moment of any measurement is
+            # retrievable -- but only if this file says when the measurement
+            # was. The nine-point table of 2026-09-10 cannot be checked against
+            # ambient for exactly this reason: HASS remembers and we did not.
+            fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')},"
+                     f"{args.distance:.2f},{mean:.5f},{std:.5f}\n")
         print(f"  -> {args.append}")
     return 0
 
