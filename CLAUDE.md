@@ -652,6 +652,66 @@ What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
 
+## We out-measured the model (2026-09-13)
+
+With the lens parked, each height's mean is known to **0.075 mm**. The
+hyperbola's residuals against those means are **0.338 mm** -- four to ten times
+the measurement's own uncertainty. They are no longer noise.
+
+```
+              std err   residual rms   LOO
+night 1, corrected    0.240 mm   0.167 mm   0.39 mm
+night 2, parked       0.075      0.338      0.76
+```
+
+Night 1's apparently better figures are partly an illusion: its residuals were
+*smaller* than its standard errors, which means the fit was absorbing noise --
+three parameters against ten points will. Night 2 measures better and fits
+worse, which is what happens when the instrument passes the model.
+
+**The residuals repeat.** Across two nights with different thermal handling:
+
+```
+      d     night 1   night 2
+  41.40      +0.037    +0.118
+  52.40      -0.105    -0.246
+  70.40      +0.058    +0.406
+ 123.40      +0.243    +0.469
+ 218.40      -0.412    -0.792
+
+correlation +0.844
+```
+
+A fourth parameter `e/(d+c)^2` changes nothing at all -- same rms to five
+decimals, as on 2026-09-11. So it is not curvature the model is missing. It is
+something height-dependent and reproducible, most likely the VCM's own
+position-to-power relation not being perfectly smooth.
+
+> **This updates "focus can be set from a formula and triangulation cannot"**
+> from 2026-09-07. That rested on a fit good to 0.27 mm, which was then the
+> measurement noise. At 0.075 mm the model's inadequacy is visible, and focus
+> wants a table too -- at the 0.3 mm level rather than the 1.5 mm level where
+> triangulation needed one.
+
+### A table alone is worse, a table on top of the model is better
+
+Straight interpolation between the measured heights fails badly: leave-one-out
+gives 4.9 mm against the model's 0.31 on the same points. That is not a fair
+test of a table in use -- removing a point forces interpolation across a doubled
+gap -- but it does show the real problem. The heights are spaced uniformly in
+dioptres, so in millimetres they run 5 to 60 mm apart, and the curvature across
+one interval at the far end is about 30 mm per dioptre squared. Linear
+interpolation there is worth 4.5 mm.
+
+**So: the hyperbola carries the curvature and a tabulated correction carries the
+repeatable residual.** Deriving the correction from night 1 and applying it to
+night 2 -- independent data -- takes the residual from 0.338 to 0.216 mm.
+
+It stops there for a measurable reason: night 1's residuals carry their own
+0.24 mm of noise, and a correction is never better than what it was derived
+from. **Derive it from parked runs.** Two nights at 0.075 mm would pin the
+pattern to about 0.05, and the corrected model should then land near 0.1 mm.
+
 ## Parking the lens: the controlled comparison (2026-09-12)
 
 Two runs, identical in every respect -- same ten heights, same randomised order,
