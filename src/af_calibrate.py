@@ -84,7 +84,14 @@ def report(path):
 
 
 def _mini(picam2, controls, args, n=4):
-    """A short reading used only to judge whether the camera has settled."""
+    """A short reading used only to judge whether the camera has settled.
+
+    Parks afterwards exactly as a real point does. The warm-up exists to find
+    the thermal equilibrium the measurement will run in, so it has to leave the
+    lens the same way -- otherwise it settles at one holding current and the
+    table is then measured at another. The same mistake as warming up at a
+    different cadence, which cost a restart an hour earlier.
+    """
     vals = []
     pattern = [args.park_low, args.park_high, args.park_high, args.park_low]
     for i in range(n):
@@ -104,6 +111,9 @@ def _mini(picam2, controls, args, n=4):
                 break
         if st == 2 and lp and not (abs(lp - 15.0) < 0.001 or abs(lp - 12.0) < 0.001):
             vals.append(lp)
+    if args.park_after is not None:
+        picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,
+                             "LensPosition": args.park_after})
     return float(np.mean(vals)) if vals else float("nan")
 
 
@@ -582,10 +592,12 @@ def main() -> int:
                    help="0 normal, 1 macro, 2 full. Normal rails at 12.0 "
                         "dioptres; macro and full reach 15.0, which is the "
                         "lens's actual travel. Free range, so full by default.")
-    p.add_argument("--park-after", type=float, default=2.5,
+    p.add_argument("--park-after", type=float, default=0.0,
                    help="park the lens here after every point so the VCM's "
                         "holding current -- and the module's temperature -- is "
                         "the same between measurements whatever was measured. "
+                        "0 is the lens's unpowered rest position, so it is "
+                        "genuinely no holding current rather than less of it. "
                         "Set to a negative value to leave the lens alone.")
     p.add_argument("--park-low", type=float, default=2.5)
     p.add_argument("--park-high", type=float, default=12.0)
