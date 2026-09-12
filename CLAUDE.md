@@ -652,6 +652,68 @@ What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
 
+## The warm near limit is 37 mm, not 43 (2026-09-12)
+
+Measured in the light-tight box, camera warm, under the conditions the night
+and then service will actually have. Six AF cycles at each height:
+
+```
+d = 31.4 mm    0/6    rails every time
+d = 35.4 mm    0/6    rails every time
+d = 39.4 mm    5/6    converges nearly always
+d = 43.4 mm    6/6    always
+d = 219.4 mm   6/6    the far end is fine, the sheet fills the frame
+```
+
+So the limit sits between 35.4 and 39.4 mm from the lid -- **better than the
+43-44 mm extrapolated from cold readings the day before**, and the table's near
+end moves in accordingly. The tank's shoulder is at 35 mm, so focus now reaches
+to within a couple of millimetres of the neck.
+
+> The rail is not only a limitation. `AfRange` is Full, so the stop is exactly
+> 15.0000 dioptres and `af_calibrate` rejects that value outright rather than
+> trusting `AfState`, which reports success against the stop. A railed reading
+> therefore means "the surface is nearer than 37 mm" with no calibration
+> involved at all -- a threshold detector for free, sitting almost exactly at
+> the height where blow-off becomes the question.
+
+**What sets the table's near end is scatter, not railing.** Just outside the
+limit the lens converges legitimately at 14.8 or 14.9 with less and less to work
+with, and the scatter climbs before `n_ok` falls. A height that gives 6/6 with
+0.05 dpt of scatter instead of 0.01 is formally fine and practically useless.
+Love raised this before the measurement: `AfState` lies, so what does 0/2 even
+mean? It means the lens value, not the state -- but his question pointed at the
+softer failure one level down.
+
+### The box changes the thermal state considerably
+
+Everything is now enclosed: lid, housing, stage and target in one light-tight
+box, with three DS18B20s -- one taped to the TC ferrule under insulation, one in
+the box air, one outside.
+
+```
+TC ferrule      24.375 C
+box air         23.937 C     -0.44 against the ferrule
+outside         23.124 C     -0.81 against the box
+```
+
+The gradient is the one predicted and never before measured: the lid assembly
+warmest, the box air between, the room coolest. The ferrule and the box air hold
+still while the outside sensor falls -- the box buffers, measurably.
+
+**But the camera runs far hotter inside it.** `SensorTemperature` reached 69 C
+during the rail hunt against 54 at the end of the warm-up, because the hunt ran
+AF every two minutes in a sealed box. That is a duty-cycle difference, not a
+box effect alone -- and it is exactly the inconsistency this project keeps
+paying for: the warm-up established equilibrium at one duty cycle and the
+measurement then ran at another. The warm-up now samples at the night's own
+interval so the equilibrium it finds is the equilibrium the table is measured
+in.
+
+`d0 = 27.4 mm`: the target sits that far below the lid at stage Z0. Z0 is
+therefore a homing reference and not a measurement height -- it is inside the
+rail.
+
 ## The target stage: an Ultimaker 2 Z axis on a TinyG (2026-09-11)
 
 Loose blocks are gone. The stage is the UM2's Z mechanism -- trapezoidal screw,
