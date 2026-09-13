@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -67,12 +68,33 @@ def last_good(path):
     return newest
 
 
+def running(pattern):
+    """PIDs matching `pattern`, never this process or its parent.
+
+    `pkill -f` was the obvious thing and it was wrong: this watchdog carries
+    the commands it supervises as its own arguments, so its command line
+    contains both `autocal.py` and `af_calibrate.py`. `pkill -f "[a]utocal.py"`
+    therefore matched the watchdog itself and killed it on its first action,
+    before it had restarted anything -- the same trap that bit three times from
+    an ssh command line two days earlier, and the code carried a comment
+    claiming it did not apply.
+
+    The bracket protects a pattern from matching *itself*. It does nothing
+    about the same text appearing elsewhere on the line.
+    """
+    me = {os.getpid(), os.getppid()}
+    out = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
+    return [int(x) for x in out.stdout.split() if x.isdigit() and int(x) not in me]
+
+
 def kill(pattern, log):
-    # pkill never matches its own process, and this runs from a script whose
-    # own command line carries neither pattern -- the trap that bit repeatedly
-    # from an ssh command line does not apply here.
-    subprocess.run(["pkill", "-f", pattern], check=False)
-    log(f"  dodade {pattern}")
+    pids = running(pattern)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    log(f"  dodade {pattern}: {pids or 'inget att doda'}")
 
 
 def main() -> int:
@@ -108,6 +130,15 @@ def main() -> int:
 
     while True:
         time.sleep(60)
+        # A finished schedule looks exactly like a stalled camera from the
+        # file alone: no new valid rows. It is not a fault, and restarting a
+        # healthy session throws away an hour of thermal equilibrium for
+        # nothing. Ask whether the thing that requests measurements is still
+        # alive before concluding anything from their absence.
+        if not running("autocal.py"):
+            log("autocal kor inte langre -- schemat klart eller avbrutet, "
+                "slutar bevaka")
+            return 0
         good = last_good(args.session)
         if good is None:
             # Still warming up, or restarted and not yet measuring. Never treat
