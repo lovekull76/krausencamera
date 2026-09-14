@@ -1,0 +1,21 @@
+# Krausencamera: PDAF-kalibrering
+# byggd 2026-09-14 ur natt 2 och 3, bada med linsen parkerad pa 0 dpt
+# 267 matningar, avstand fran lockets undersida, mm
+#
+# modell:  dpt = 0.5712 + 845.01/(d +21.5860)
+# anvandning: los d ur modellen, addera sedan korrektionen interpolerad i d.
+# Korrektionen ar verklig och reproducerbar inom 125 mm (r=0.887 mellan
+# natterna, skillnad 0.117 mm mot 0.099 forvantat av brus). Bortom 125 mm
+# ar den brus -- tillampa den INTE dar forran fler besok finns.
+#
+d_mm,dpt,medelfel_mm,korrektion_mm,n,tillampa_korrektion
+41.40,14.00913,0.042,+0.103,20,ja
+46.40,12.99363,0.046,-0.037,19,ja
+52.40,11.95486,0.054,-0.244,19,ja
+60.40,10.87385,0.032,-0.033,21,ja
+70.40,9.79313,0.067,+0.356,19,ja
+82.40,8.68375,0.065,-0.176,19,ja
+99.40,7.55628,0.091,+0.011,20,ja
+123.40,6.41469,0.075,+0.378,90,ja
+158.40,5.26045,0.185,-0.218,20,nej
+218.40,4.08697,0.273,-0.366,20,nej

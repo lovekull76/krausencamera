@@ -652,6 +652,75 @@ What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
 
+## The calibration, finished (2026-09-14)
+
+267 measurements across two nights, both with the lens parked, ten heights in
+randomised order with one revisited every third visit.
+
+```
+dpt = 0.5712 + 845.01/(d + 21.5860)
+plus a tabulated correction, in calib/af-model-20260914.csv
+
+      d      dpt        std err   correction   n   apply
+  41.40   14.00913      0.042 mm    +0.103     20   yes
+  46.40   12.99363      0.046       -0.037     19   yes
+  52.40   11.95486      0.054       -0.244     19   yes
+  60.40   10.87385      0.032       -0.033     21   yes
+  70.40    9.79313      0.067       +0.356     19   yes
+  82.40    8.68375      0.065       -0.176     19   yes
+  99.40    7.55628      0.091       +0.011     20   yes
+ 123.40    6.41469      0.075       +0.378     90   yes
+ 158.40    5.26045      0.185       -0.218     20   no
+ 218.40    4.08697      0.273       -0.366     20   no
+```
+
+**The correction is real inside 125 mm and noise beyond it.** Between the two
+nights the residuals correlate **+0.887** there, and differ by 0.117 mm against
+0.099 expected from the measurements' own noise -- so the difference is noise
+and the pattern is fully reproducible. Past 125 mm the two nights differ by
+0.581 mm against 0.302 expected, on two points; nothing can be concluded.
+
+Cross-validated the only honest way, deriving the correction from night 2 and
+applying it to night 3:
+
+```
+                                   residual    LOO
+night 3, as measured                0.210 mm   0.279 mm
+night 3, minus night 2's pattern    0.277      0.679     worse overall
+   but inside 125 mm                0.117      0.147     clearly better
+```
+
+Applying it beyond 125 mm makes things worse, because subtracting noise adds
+noise. The file carries an `apply` column for exactly that reason.
+
+| | LOO |
+|---|---|
+| the nine-point table, 2026-09-10 | 1.08 mm |
+| night 1, temperature-corrected | 0.39 |
+| night 3, parked, no correction | 0.279 |
+| **night 3, parked + correction, inside 125 mm** | **0.147** |
+
+**Seven times better than three days ago**, and the mechanism behind every step
+is understood rather than fitted away.
+
+### What limits it now, in order
+
+**Beyond 125 mm: counting statistics.** The standard error is 0.185 mm at
+158 mm and 0.273 at 218, on twenty visits each, because one dioptre is 43 and
+73 mm there. Nothing is wrong with the model or the method -- that end simply
+wants more visits. Four times as many would halve it.
+
+**Inside 125 mm: the correction's own uncertainty**, 0.06 mm, and the
+measurement's 0.059. Both are now below a tenth of a millimetre, which is
+where the AF's single-cycle scatter sits. There is little left to win without
+averaging more.
+
+> **And none of it transfers to a different camera or a different housing.**
+> The correction is this module's VCM, this build's geometry. Rebuilding the
+> housing -- which is planned -- invalidates the table and the whole two nights
+> have to be repeated. That is now a nine-hour unattended job rather than a
+> week, which is the real return on the stage and `autocal.py`.
+
 ## We out-measured the model (2026-09-13)
 
 With the lens parked, each height's mean is known to **0.075 mm**. The
