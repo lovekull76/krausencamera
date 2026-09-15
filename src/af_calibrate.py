@@ -399,6 +399,18 @@ def start_preview(broker, port):
         def log_message(self, *a):
             pass
 
+        def handle_error(self, *a):
+            """A viewer closing a tab is not an error worth a traceback.
+
+            The stream loop already catches a broken write, but the server also
+            reads the next request line, and an abrupt disconnect raises there
+            -- outside any handler of ours. BaseHTTPRequestHandler then prints a
+            full traceback per closed tab. liveview.py silences the same thing
+            for the same reason: a log full of routine disconnects hides the
+            failures that matter.
+            """
+            pass
+
         def do_GET(self):
             if self.path.rstrip("/") in ("", "/index.html"):
                 body = PAGE.encode()
