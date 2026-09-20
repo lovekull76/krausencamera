@@ -83,6 +83,34 @@ def report(path):
               f"fel {(dpt[i]-pred)*sens:+6.2f} mm")
 
 
+
+def af_controls(controls, args):
+    """The AF controls for one trigger, with the metering window if asked for.
+
+    **Why a window is worth having at all.** The default metering region is not
+    documented, and whatever it is, part of the tube's mouth may fall inside it
+    -- the mouth's radius in frame is set by the housing, so every rebuild puts
+    a different amount of dark wall in front of the phase detector. Love's
+    point, 2026-09-19: relying on that fraction coming out the same each time
+    is a latent variable, not a design. A window fixed well inside the mouth
+    removes it.
+
+    Measured the same evening: moving the window from one side of the target to
+    the other shifts the reading 0.054 dpt (3.6 sigma), so the control does
+    bite. What that test did *not* establish is what including tube wall does,
+    because both windows sat on the target.
+
+    `--af-window` is a half-width in sensor pixels; 0 keeps the default.
+    """
+    c = {"AfMode": controls.AfModeEnum.Auto, "AfRange": args.af_range}
+    w = getattr(args, "af_window", 0)
+    if w:
+        cx, cy = 2304, 1296          # centre of the 4608x2592 array
+        c["AfMetering"] = controls.AfMeteringEnum.Windows
+        c["AfWindows"] = [(cx - w, cy - w, 2 * w, 2 * w)]
+    return c
+
+
 def _mini(picam2, controls, args, n=4):
     """A short reading used only to judge whether the camera has settled.
 
@@ -91,6 +119,17 @@ def _mini(picam2, controls, args, n=4):
     lens the same way -- otherwise it settles at one holding current and the
     table is then measured at another. The same mistake as warming up at a
     different cadence, which cost a restart an hour earlier.
+
+    **The cycle count is still asymmetric, and that is left alone on purpose.**
+    Love asked whether the coil rests between checks the way it does between
+    points. It does. But `n` is 4 here against `--runs` 8 in a measurement, so
+    the warm-up draws half the AF duty. Raising it to `--runs` was tried on
+    2026-09-17 and reverted before the run started: nights 2 and 3 warmed up at
+    n=4 and produced the best table the project has had, so there is no evidence
+    the asymmetry costs anything -- and that night's variable was a new housing.
+    Changing the protocol in the same run would have confounded the two, which
+    is the annealed-and-shimmed mistake over again. Worth testing on its own
+    night, against a night at n=4, and not before.
     """
     vals = []
     pattern = [args.park_low, args.park_high, args.park_high, args.park_low]
@@ -98,8 +137,7 @@ def _mini(picam2, controls, args, n=4):
         picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,
                              "LensPosition": pattern[i % 4]})
         time.sleep(1.5)
-        picam2.set_controls({"AfMode": controls.AfModeEnum.Auto,
-                             "AfRange": args.af_range})
+        picam2.set_controls(af_controls(controls, args))
         time.sleep(0.3)
         t0 = time.time()
         picam2.set_controls({"AfTrigger": controls.AfTriggerEnum.Start})
@@ -267,8 +305,7 @@ def take_point(picam2, controls, args):
         picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,
                              "LensPosition": park})
         time.sleep(1.8)
-        picam2.set_controls({"AfMode": controls.AfModeEnum.Auto,
-                             "AfRange": args.af_range})
+        picam2.set_controls(af_controls(controls, args))
         time.sleep(0.3)
         t0 = time.time()
         picam2.set_controls({"AfTrigger": controls.AfTriggerEnum.Start})
@@ -611,6 +648,12 @@ def main() -> int:
                         "0 is the lens's unpowered rest position, so it is "
                         "genuinely no holding current rather than less of it. "
                         "Set to a negative value to leave the lens alone.")
+    p.add_argument("--af-window", type=int, default=0, metavar="PX",
+                   help="half-width in sensor pixels of a square AF metering "
+                        "window centred on the array; 0 uses libcamera's "
+                        "default region. The mouth's texture dies around 1575 "
+                        "px from centre with the 2026-09-19 housing, so 600-800 "
+                        "sits well inside it.")
     p.add_argument("--park-low", type=float, default=2.5)
     p.add_argument("--park-high", type=float, default=12.0)
     p.add_argument("--exposure-us", type=int, default=15000)

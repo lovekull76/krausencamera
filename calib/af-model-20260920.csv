@@ -1,0 +1,22 @@
+# Krausencamera, AF-kalibrering 2026-09-20
+# nytt hus (kameran 5 mm hogre), siktglas med 8 mm glas, linsen parkerad pa 0 dpt
+# 200 matningar over 16.6 h, noll misslyckade, nio hojder
+# modell:  dpt = 2.1370 + 846.29/(d + 22.6120)
+#
+# Korrektionen ar reproducerbar: delad pa mitten korrelerar halvorna r=+0.961,
+# och harledd ur ena halvan och tillampad pa den andra tar den rms fran
+# 0.626 till 0.168 mm -- alltsa ned till hojdernas egna medelfel.
+# Den galler DENNA byggnation. Ett mekaniskt ingrepp i kamerastapeln
+# ogiltigforklarar bade modellen och tabellen.
+#
+# railar vid 43.18 mm; 41.40 mm ligger pa gransen och ar struken
+d_mm,dpt,medelfel_mm,korrektion_mm,n,tillampa_korrektion
+46.40,14.41935,0.073,-0.110,16,ja
+52.40,13.42361,0.088,-0.031,17,ja
+60.40,12.32217,0.037,+0.078,17,ja
+70.40,11.20793,0.110,+0.284,17,ja
+82.40,10.14980,0.093,+0.601,17,ja
+99.40,9.10058,0.053,-0.484,16,ja
+123.40,7.94949,0.119,-0.416,67,ja
+158.40,6.80241,0.138,+0.382,17,ja
+218.40,5.62651,0.138,+1.499,16,ja

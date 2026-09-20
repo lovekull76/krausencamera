@@ -40,13 +40,21 @@ import sys
 import time
 
 
-def last_good(path):
+def last_good(path, since=None):
     """Timestamp of the newest row that actually carries a measurement.
 
     The session CSV is `tid,t_s,d_mm,medel_dpt,...`, and a point that failed
     writes the row with medel_dpt empty. Returns None if the file has no valid
     row at all, which is also the state during warm-up -- so the caller must
     not treat "no valid row" as a stall until it has seen one.
+
+    ⚠️ `since` is not optional in practice, and leaving it out destroyed most of
+    the night of 2026-09-18. The file accumulates sessions: a restart appends to
+    the same CSV. Without a lower bound the newest valid row was `01:17:18` from
+    a session that had already been killed by hand, so a freshly started
+    warm-up looked fifty minutes stale and was killed -- three times, until the
+    restart budget ran out. **Staleness has to be measured against the session
+    now running, not against whatever the file happens to remember.**
     """
     newest = None
     try:
@@ -60,6 +68,8 @@ def last_good(path):
                 try:
                     ts = dt.datetime.strptime(f[0], "%Y-%m-%dT%H:%M:%S")
                 except ValueError:
+                    continue
+                if since is not None and ts < since:
                     continue
                 if newest is None or ts > newest:
                     newest = ts
@@ -127,6 +137,10 @@ def main() -> int:
     log(f"vakthund igang: {args.session}, stale {args.stale:.0f} min")
     restarts = 0
     seen_any = False
+    # Rows older than this belong to a session that is no longer running, and
+    # must not count as evidence that this one is alive -- nor as evidence that
+    # it is stale. Reset on every restart, for the same reason.
+    baseline = dt.datetime.now()
 
     while True:
         time.sleep(60)
@@ -139,7 +153,7 @@ def main() -> int:
             log("autocal kor inte langre -- schemat klart eller avbrutet, "
                 "slutar bevaka")
             return 0
-        good = last_good(args.session)
+        good = last_good(args.session, since=baseline)
         if good is None:
             # Still warming up, or restarted and not yet measuring. Never treat
             # this as a stall: there is nothing to be stale relative to.
@@ -162,18 +176,28 @@ def main() -> int:
         kill("[a]f_calibrate.py", log)
         time.sleep(8)
 
+        marker = f"=== omstartad av afwatch {time.strftime('%H:%M:%S')} ==="
         with open(args.af_log, "a") as x:
-            x.write(f"\n=== omstartad av afwatch {time.strftime('%H:%M:%S')} ===\n")
+            x.write("\n" + marker + "\n")
+        baseline = dt.datetime.now()
         subprocess.Popen(f"setsid nohup {args.af} >>{args.af_log} 2>&1 &",
                          shell=True, start_new_session=True)
         log("   af_calibrate startad, vantar pa uppvarmning")
 
+        # The restart appends to af_log, so the previous session's own
+        # "vantar pa GO" is still sitting in the tail of the file. Reading the
+        # last few kB therefore declared the warm-up complete twenty seconds
+        # after a restart, every time, and autocal was started against a camera
+        # that had just been switched on. Read only what was written after this
+        # restart's marker.
         deadline = time.time() + args.warmup_wait * 60
         ready = False
         while time.time() < deadline:
             time.sleep(20)
             try:
-                if "vantar pa" in open(args.af_log).read()[-4000:]:
+                txt = open(args.af_log).read()
+                cut = txt.rfind(marker)
+                if cut >= 0 and "vantar pa" in txt[cut + len(marker):]:
                     ready = True
                     break
             except OSError:

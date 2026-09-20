@@ -6,12 +6,27 @@ optical geometry and calibration method.
 
 ## Hardware
 
-- **Raspberry Pi 3B+** Rev 1.3 — hostname `krausencamera`
+- **Raspberry Pi Zero 2 W** Rev 1.0 — hostname `krausencamera`
 - **Camera Module 3 NoIR** (imx708_noir), 4608×2592, 10-bit RGGB
   - Modes: 1536×864 @120fps · 2304×1296 @56fps · 4608×2592 @14fps
   - NoIR makes IR illumination possible without disturbing fermentation with
     visible light
-- 905 MB RAM + zram swap (~905 MB) · 28 GB SD card
+- 425 MB usable RAM (512 physical, less firmware reserve) of which **256 MB is
+  CMA** for the camera · zram swap ~415 MB · 28 GB SD card
+  - Measured 2026-09-18 under a running calibration: 268 MB used, 147
+    available, 52 MB already swapped. It works, but there is not much room.
+    CMA is the obvious place to find some — the main stream is 11.9 MB a frame
+    and the RAW 5.9, so 256 MB is likely more than the pipeline needs.
+
+> ⚠️ **The power and thermal characterisation below was done on a 3B+**, which
+> this machine no longer is. The giveaway is `arm=1400MHz` in those tables: a
+> Zero 2 W tops out at 1000. Treat the temperatures, the heatsink comparison
+> and the current figures as history for a different board. What carries over
+> is the *diagnosis* — that every fault was in the supply path, and that a
+> current limit kills silently where a resistive drop warns first. The Zero 2 W
+> draws roughly a third of the 3B+ and has correspondingly smaller transients,
+> so the margins are wider, not tighter. Verified 2026-09-18: `throttled=0x0`
+> after 18 hours and no voltage lines in `dmesg`.
 - **WiFi only**, no cable
 
 ## Access
@@ -1439,6 +1454,16 @@ the rim's own projection and so is independent of what lies behind it.
 
 **So it is one CAD fix**, and the lopsided crop and the "tilt" are the same fault
 seen twice.
+
+> **⚠️ Superseded 2026-09-10, and again on 09-20.** The 3.60 degrees was not a
+> property of the housing's board seat. It was the module hanging off its own
+> PCB -- see the RESOLVED section above -- and **the shim fixed it**. The table
+> below assigns it to the seat because that section was written before the
+> detached module was found, and the attribution was never corrected.
+>
+> Do not cite these 3.6 degrees as evidence that a printed seat sets the
+> pointing. Love has had to say so twice. If a future housing needs its
+> pointing argued about, measure it again on that housing.
 
 > **Retracted: "the drill doubled the tilt."** The 0.193 dpt on the damaged
 > camera and 0.114 on the fresh one were measured in *different housings*, and

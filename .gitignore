@@ -24,3 +24,6 @@ timelapse/
 
 # Site-specific — IP, MAC, keys. The repository is public.
 LOCAL.md
+
+# Scratch -- aldrig i det publika repot
+tmp/
