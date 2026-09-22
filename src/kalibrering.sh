@@ -82,6 +82,23 @@ if pgrep -f "af_calibrate\.py --session" | grep -qv "^$$\$"; then
   exit 1
 fi
 
+# The temperature log is not optional and was twice left out by hand: the
+# afternoon run of 2026-09-19 has no temperatures at all because it was started
+# without it. Every thermal conclusion in this project came from these three
+# sensors against the reading, so a session without them cannot answer the
+# question it was started to answer.
+if ! pgrep -f "python3 dslog\.py" >/dev/null; then
+  TLOG="temps-$(date +%Y%m%d).csv"
+  echo "startar temperaturloggen -> $TLOG"
+  setsid nohup python3 dslog.py --out "$TLOG" --interval 30 \
+    </dev/null >>dslog.log 2>&1 &
+  sleep 3
+  pgrep -f "python3 dslog\.py" >/dev/null \
+    && echo "  igang" || echo "  ** dslog startade inte -- kolla 1-Wire **"
+else
+  echo "temperaturloggen kor redan"
+fi
+
 echo "startar kameran, uppvarmning 30-75 min"
 setsid nohup $AF </dev/null >"${SESSION%.csv}.log" 2>&1 &
 sleep 8
