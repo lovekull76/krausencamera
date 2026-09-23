@@ -49,7 +49,7 @@ ZREF=$(python3 -c "print(f'{$REF-$D0:.2f}')")
 # and breaks parity with the warm-up, which runs four cycles.
 AF="python3 af_calibrate.py --session $SESSION --request GO --preview 8081 \
 --interval 300 --runs 2 --auto-exposure --park-after 0.0 \
---warmup-interval 300 --warmup-min 30 --warmup-max 75"
+--warmup-interval 300 --warmup-min 30 --warmup-max 100"
 CAL="python3 autocal.py --d0 $D0 --session $SESSION --request GO \
 --interval 300 --visits 200 --zmax 200 --ref $ZREF --ref-every 3 --heights $Z"
 
