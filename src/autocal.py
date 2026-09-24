@@ -89,6 +89,93 @@ def schedule(heights, ref, ref_every, visits, rng):
     return out[:visits]
 
 
+def parse_blocks(spec):
+    """`600x4,120x4` -> [(600.0, 4.0), (120.0, 4.0)]: seconds between visits,
+    hours per block. The list is cycled."""
+    out = []
+    for part in spec.split(","):
+        iv, hrs = part.lower().split("x")
+        out.append((float(iv), float(hrs)))
+    return out
+
+
+def block_at(blocks, elapsed):
+    """Which block wall-clock time `elapsed` (s since t0) falls in.
+
+    Anchored to a fixed t0 rather than counted from process start, so a restart
+    by afwatch resumes the schedule where the clock says it is instead of
+    beginning again with block one -- which would silently lengthen whichever
+    block happened to be running and break the alternation."""
+    cycle = sum(h for _, h in blocks) * 3600.0
+    into = elapsed % cycle
+    k = int(elapsed // cycle) * len(blocks)
+    for iv, hrs in blocks:
+        if into < hrs * 3600.0:
+            return k, iv
+        into -= hrs * 3600.0
+        k += 1
+    return k - 1, blocks[-1][0]
+
+
+def run_blocks(args, st, log):
+    """Block mode: one height, the visit interval alternating between blocks.
+
+    Asks whether the drift comes from the lens *moving* or from the camera
+    merely *running*. Night 1 of the new module drifted 0.12 mm/h while the
+    camera was on and at most a third of that during seven hours switched off,
+    so it follows operating time -- but operating time and AF cycles were
+    locked together at one cycle per five minutes. Changing the interval
+    separates them: drift per hour that scales with the visit rate is the lens,
+    drift per hour that does not is time.
+
+    Alternating blocks rather than one long half of each, because the drift
+    itself decays slowly (25 % between the first two nights), and a slow trend
+    confounded with the condition is exactly the error this project has made
+    twice.
+
+    **The stage moves once, at the start, and never again.** In table mode
+    every visit moves, and here that would make stage vibration five times as
+    frequent in the fast blocks -- a second variable riding on the first.
+    """
+    blocks = parse_blocks(args.blocks)
+    t0 = args.t0 if args.t0 is not None else time.time()
+    end = t0 + args.hours * 3600.0
+    z = args.heights[0]
+    d = args.d0 + z
+
+    if not st.move_to(z, args.feed, args.approach):
+        print("  ** riggen rapporterade aldrig klar -- avbryter **")
+        return 1
+    time.sleep(args.settle)
+
+    log.write("# blockläge: tid,besok,block,intervall_s,Z,d_mm,rader_fore,rader_efter\n")
+    n = 0
+    while time.time() < end:
+        t_start = time.time()
+        k, iv = block_at(blocks, t_start - t0)
+        n += 1
+        stamp = time.strftime("%H:%M:%S")
+        print(f"\n[{n}] {stamp}  block {k + 1}  intervall {iv:.0f} s  d {d:.2f} mm",
+              flush=True)
+        before = rows_in(args.session)
+        with open(args.request, "w") as fh:
+            fh.write(f"{d:.2f}\n")
+        deadline = time.time() + max(600.0, iv)
+        while time.time() < deadline:
+            time.sleep(2.0)
+            if rows_in(args.session) > before:
+                break
+        after = rows_in(args.session)
+        print(f"  {'matt' if after > before else '** ingen rad -- kor kameran? **'}"
+              f"   rader {before} -> {after}", flush=True)
+        log.write(f"{stamp},{n},{k + 1},{iv:.0f},{z:.3f},{d:.3f},{before},{after}\n")
+
+        wait = iv - (time.time() - t_start)
+        if wait > 0:
+            time.sleep(wait)
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -126,7 +213,57 @@ def main() -> int:
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--dry-run", action="store_true",
                    help="print the schedule and stop, touching nothing")
+    p.add_argument("--blocks", metavar="SPEC",
+                   help="block mode, e.g. 600x4,120x4: one height, visit "
+                        "interval in seconds alternating per block of hours. "
+                        "Takes exactly one --heights value; --ref is ignored.")
+    p.add_argument("--hours", type=float, default=48.0,
+                   help="block mode: total length")
+    p.add_argument("--t0", type=float, default=None,
+                   help="block mode: epoch the schedule is anchored to. Put it "
+                        "on the command line afwatch restarts, so a restart "
+                        "resumes the schedule instead of starting it over.")
     args = p.parse_args()
+
+    if args.blocks:
+        if len(args.heights) != 1:
+            print("blocklage tar exakt en hojd")
+            return 1
+        blocks = parse_blocks(args.blocks)
+        if args.dry_run:
+            t0 = args.t0 if args.t0 is not None else time.time()
+            print(f"blocklage, d {args.d0 + args.heights[0]:.2f} mm, "
+                  f"{args.hours:.0f} h fran {time.strftime('%d %H:%M', time.localtime(t0))}")
+            t, last = 0.0, None
+            visits = {}
+            while t < args.hours * 3600:
+                k, iv = block_at(blocks, t)
+                if k != last:
+                    print(f"  block {k + 1:2d}  {time.strftime('%d %H:%M', time.localtime(t0 + t))}"
+                          f"  var {iv:.0f} s")
+                    last = k
+                visits[iv] = visits.get(iv, 0) + 1
+                t += iv
+            for iv, v in visits.items():
+                print(f"  intervall {iv:.0f} s: {v} besok")
+            return 0
+        if not args.zmin <= args.heights[0] <= args.zmax:
+            print(f"hojd {args.heights[0]} utanfor {args.zmin}-{args.zmax}")
+            return 1
+        st = Stage(args.port, zmin=args.zmin, zmax=args.zmax, hold=True)
+        log = open(args.log, "a", buffering=1)
+        log.write(f"# autocal blocklage {time.strftime('%Y-%m-%dT%H:%M:%S')}  "
+                  f"d0 {args.d0}  block {args.blocks}  t0 {args.t0}\n")
+        try:
+            rc = run_blocks(args, st, log)
+        except KeyboardInterrupt:
+            print("\navbruten")
+            rc = 0
+        finally:
+            st.power_off()
+            log.close()
+        print("klart")
+        return rc
 
     rng = random.Random(args.seed)
     plan = schedule(args.heights, args.ref, args.ref_every, args.visits, rng)

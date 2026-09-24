@@ -36,7 +36,10 @@ done
 # 41.40 dropped 2026-09-19: the rail sits at 43.5 mm with this housing, so it
 # fails 0/2 every visit and wastes one visit in ten. Put it back only after a
 # rebuild that measurably moves the rail inside it.
-AVSTAND="46.40 52.40 60.40 70.40 82.40 99.40 123.40 158.40 218.40"
+# 2026-09-23: that rebuild happened -- the new module glued with no preload
+# rails near 25 mm, and 32.40 converges. These are the thirteen heights of its
+# first night (af12, via railjakt.sh), so the second night is comparable.
+AVSTAND="32.40 35.40 38.40 41.40 46.40 52.40 60.40 70.40 82.40 99.40 123.40 158.40 218.40"
 REF=123.40
 
 Z=$(python3 -c "
@@ -99,7 +102,14 @@ else
   echo "temperaturloggen kor redan"
 fi
 
-echo "startar kameran, uppvarmning 30-75 min"
+# Warm up at the reference height. On 2026-09-23 the night started with the
+# stage wherever the previous run had left it, 60 mm from the reference, and
+# was only moved by hand five minutes into the warm-up.
+echo "flyttar bordet till referensen Z$ZREF"
+python3 stage.py --hold --to "$ZREF" --feed 150 --approach 5 --zmax 200 \
+  | grep -q framme || { echo "** bordet kom aldrig fram -- avbryter **"; exit 1; }
+
+echo "startar kameran, uppvarmning 30-100 min"
 setsid nohup $AF </dev/null >"${SESSION%.csv}.log" 2>&1 &
 sleep 8
 for i in $(seq 1 300); do
@@ -110,7 +120,9 @@ grep -q "vantar pa GO" "${SESSION%.csv}.log" || { echo "uppvarmningen blev aldri
 echo "$(date +%H:%M:%S) uppvarmning klar, startar autocal"
 setsid nohup $CAL </dev/null >>"${SESSION%.csv}.out" 2>&1 &
 sleep 20
-setsid nohup python3 afwatch.py --session "$SESSION" --stale 25 \
+# --warmup-wait 110: the aluminium plate warms up in ~70 min, and afwatch's
+# default of 45 would restart autocal against a camera still warming.
+setsid nohup python3 afwatch.py --session "$SESSION" --stale 25 --warmup-wait 110 \
   --af "$AF" --cal "$CAL" --af-log "${SESSION%.csv}.log" \
   --cal-log "${SESSION%.csv}.out" --log "${SESSION%.csv}.watch" \
   </dev/null >>"${SESSION%.csv}.watchout" 2>&1 &
