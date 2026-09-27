@@ -22,11 +22,18 @@ cd ~/krausencamera
 D0=27.4
 SESSION=af9.csv
 DRY=""
+# Exposures the auto choice picks from. Empty = af_calibrate's default, which
+# reaches 50 ms. Anything over ~32 ms lengthens the frame past 33.3 ms, so the
+# sensor reads out less often and runs cooler: at 218 mm the 50 ms choice put it
+# at 43 C against 46 everywhere else, and the reference read 24 mdpt low after
+# every such visit (2026-09-23). Capping at 32000 keeps every height at 30 fps.
+EXPOSURES=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --d0)      D0="$2"; shift 2;;
     --session) SESSION="$2"; shift 2;;
     --dry)     DRY="--dry-run"; shift;;
+    --exposures) EXPOSURES="$2"; shift 2;;
     *) echo "okant argument: $1"; exit 2;;
   esac
 done
@@ -52,11 +59,13 @@ ZREF=$(python3 -c "print(f'{$REF-$D0:.2f}')")
 # and breaks parity with the warm-up, which runs four cycles.
 AF="python3 af_calibrate.py --session $SESSION --request GO --preview 8081 \
 --interval 300 --runs 2 --auto-exposure --park-after 0.0 \
---warmup-interval 300 --warmup-min 30 --warmup-max 100"
+--warmup-interval 300 --warmup-min 30 --warmup-max 100\
+${EXPOSURES:+ --exposures $EXPOSURES}"
 CAL="python3 autocal.py --d0 $D0 --session $SESSION --request GO \
 --interval 300 --visits 200 --zmax 200 --ref $ZREF --ref-every 3 --heights $Z"
 
 echo "d0 = $D0 mm"
+echo "exponeringar: ${EXPOSURES:-af_calibrates standard}"
 echo "avstand: $AVSTAND"
 echo "stage Z: $Z   (referens Z$ZREF)"
 echo
