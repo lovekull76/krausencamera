@@ -261,6 +261,9 @@ def pick_exposure(picam2, args):
     first is the one that matters. The 99.9th rather than the maximum because
     a few specular pixels should not drag the whole frame dark.
     """
+    # A fixed-exposure request may have left the gain raised; the auto choice
+    # assumes unity, as every table so far was taken at.
+    picam2.set_controls({"AnalogueGain": 1.0})
     best = None
     for e in args.exposures:
         # A frame cannot be shorter than its own exposure, so the duration
@@ -287,6 +290,41 @@ def pick_exposure(picam2, args):
     picam2.set_controls({"ExposureTime": e, "FrameDurationLimits": (d, d)})
     time.sleep(0.6)
     print(f"  exponering {e} us   p99.9 {p999:.0f}   medelniva {mean:.1f}")
+    return e, mean
+
+
+def parse_override(text):
+    """`218.40 exp=32000 gain=1.3` -> {"exp": 32000, "gain": 1.3}.
+
+    Lets one request fix the exposure and gain instead of the auto choice.
+    Written to vary the image level at one height without changing the frame
+    rate: on 2026-09-27 capping exposure at 32 ms removed the sensor cooling at
+    218 mm but made that height darker, and its residual grew from +4 to +8 mm
+    while 158 mm got brighter and its residual shrank. Level and frame rate
+    were changed together there; this separates them.
+    """
+    out = {}
+    for tok in text.split()[1:]:
+        k, _, v = tok.partition("=")
+        if k == "exp":
+            out["exp"] = int(v)
+        elif k == "gain":
+            out["gain"] = float(v)
+    return out
+
+
+def set_exposure(picam2, e, gain):
+    """Fixed exposure and gain, frame duration lifted only as far as needed."""
+    d = max(33333, e + 1000)
+    picam2.set_controls({"ExposureTime": e, "AnalogueGain": gain,
+                         "FrameDurationLimits": (d, d)})
+    time.sleep(0.6)
+    for _ in range(3):
+        picam2.capture_array("main")
+    a = picam2.capture_array("main")[:, :, :3]
+    mean = float(a.max(axis=2).astype(np.float32).mean())
+    print(f"  fast exponering {e} us, forstarkning {gain:.2f}   "
+          f"fps {1e6/d:.1f}   medelniva {mean:.1f}")
     return e, mean
 
 
@@ -547,13 +585,20 @@ def run_session(picam2, controls, args):
                     print(f"  kunde inte lasa ett avstand ur {text!r} -- "
                           f"tar punkten anda, utan avstand")
                     dist = None
+                override = parse_override(text)
+            else:
+                override = {}
             el = time.time() - t0
             stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
             n += 1
             print(f"\n=== punkt {n}   {el/60:5.1f} min"
                   + (f"   d {dist:.2f} mm" if dist else "") + " ===", flush=True)
-            exp_us, level = (pick_exposure(picam2, args) if args.auto_exposure
-                             else (args.exposure_us, float("nan")))
+            if override:
+                exp_us, level = set_exposure(picam2, override.get("exp", args.exposure_us),
+                                             override.get("gain", 1.0))
+            else:
+                exp_us, level = (pick_exposure(picam2, args) if args.auto_exposure
+                                 else (args.exposure_us, float("nan")))
             lo, hi, seq, ts, te = take_point(picam2, controls, args)
             label = f"{dist:.0f} mm" if dist else f"{el/60:.0f} min"
             mean, std, drifted = summarise(lo, hi, seq, ts, te, args, label)
