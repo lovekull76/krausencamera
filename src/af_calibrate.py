@@ -645,8 +645,12 @@ def main() -> int:
     p.add_argument("--exposure-target", type=float, default=230.0,
                    help="99.9th percentile the auto exposure aims under")
     p.add_argument("--exposures", type=int, nargs="+",
-                   default=[1000, 2000, 4000, 8000, 15000, 25000, 37000, 50000],
-                   help="exposures the auto choice picks from, us")
+                   default=[1000, 2000, 4000, 8000, 15000, 25000, 32000],
+                   help="exposures the auto choice picks from, us. Capped at "
+                        "32000 so the frame never outgrows 33.3 ms: a longer "
+                        "exposure slows the sensor's readout, it runs cooler, "
+                        "and the reading after it comes out 24 mdpt low "
+                        "(2026-09-23). Service runs at 30 fps, so calibrate there.")
     p.add_argument("--bitrate", type=int, default=12_000_000,
                    help="MJPEG bitrate for the preview. Matches liveview's "
                         "default; a third of it visibly posterises a smooth "

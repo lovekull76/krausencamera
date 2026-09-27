@@ -23,7 +23,8 @@ D0=27.4
 SESSION=af9.csv
 DRY=""
 # Exposures the auto choice picks from. Empty = af_calibrate's default, which
-# reaches 50 ms. Anything over ~32 ms lengthens the frame past 33.3 ms, so the
+# since 2026-09-28 stops at 32 ms so every height runs at 30 fps; it used to
+# reach 50 ms. Anything over ~32 ms lengthens the frame past 33.3 ms, so the
 # sensor reads out less often and runs cooler: at 218 mm the 50 ms choice put it
 # at 43 C against 46 everywhere else, and the reference read 24 mdpt low after
 # every such visit (2026-09-23). Capping at 32000 keeps every height at 30 fps.
