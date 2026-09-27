@@ -20,13 +20,21 @@ WorkingDirectory=/home/pi/krausencamera
 
 # Edit the arguments here, not in a shell script: this file is the record of
 # how the instrument is actually configured.
+#
+# --pdaf-model: the surface by phase-detect AF against the calibration file,
+#   copied here from calib/ -- replace it after every recalibration.
+# --max-frame-duration-us 33333: the live view must hold 30 fps as the
+#   calibration did. A slower frame cools the sensor and moves the reading.
+# --lid-sensor: the DS18B20 on the TC ferrule (hardware/ds18b20-sensors.md).
 ExecStart=/usr/bin/python3 /home/pi/krausencamera/liveview.py \
-    --no-laser \
+    --pdaf-model /home/pi/krausencamera/af-model.csv \
+    --measure-interval 300 \
+    --max-frame-duration-us 33333 \
+    --lid-sensor 28-ef39cb356461 \
     --snapshot-dir /home/pi/frames \
     --snapshot-interval 300 \
     --snapshot-exposure-us 15000 \
-    --lens-position 5.58 \
-    --pdaf-every 2
+    --lens-position 0
 
 Restart=always
 RestartSec=10

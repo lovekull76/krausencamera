@@ -83,6 +83,10 @@ PAGE = """<!DOCTYPE html>
     <span id="focus" class="focus"></span>
     <span id="exp" class="focus"></span>
   </div>
+  <div class="row hw" id="zerorow" hidden>
+    <button id="zero">Set zero at fill level</button>
+    <span id="zeroinfo" class="focus"></span>
+  </div>
   <div class="meta"></div>
 <script>
   const img = document.querySelector("img");
@@ -126,7 +130,21 @@ PAGE = """<!DOCTYPE html>
     laser.classList.toggle("on", st.laser);
     led.textContent = st.led ? "IR on" : "IR forced off";
     laser.textContent = st.laser ? "LASER ON" : "Laser off";
-    if (st.focus) {
+    if (st.focus && "zero_mm" in st.focus) {   // the PDAF meter
+      const f = st.focus;
+      document.getElementById("zerorow").hidden = false;
+      const words = {ok: "", uppvarmning: "warming up \u00b7 ",
+        utanfor_kalibrering: "beyond calibration \u00b7 ",
+        i_halsen: "IN THE NECK", misslyckad: "no focus", morkt: "lamp off \u00b7 no reading"};
+      focus.textContent = f.busy ? "measuring\u2026"
+        : !f.tid ? "no measurement yet"
+        : f.d_mm === null ? words[f.status] + " \u00b7 " + f.age_s + " s ago"
+        : words[f.status] + "surface " + f.d_mm.toFixed(1) + " mm"
+          + (f.krausen_mm !== null ? " \u00b7 krausen " + f.krausen_mm.toFixed(1) + " mm" : "")
+          + " \u00b7 " + f.dpt.toFixed(3) + " dpt \u00b7 " + f.age_s + " s ago";
+      document.getElementById("zeroinfo").textContent = f.zero_mm === null
+        ? "no zero set" : "zero at " + f.zero_mm.toFixed(1) + " mm";
+    } else if (st.focus) {
       const f = st.focus;
       // "busy" is why the picture just went black: the lamp is off and the
       // exposure is down at 8 ms for the laser frame.
@@ -142,6 +160,13 @@ PAGE = """<!DOCTYPE html>
   }
   led.onclick = () => toggle("/api/led", led.textContent !== "IR on");
   laser.onclick = () => toggle("/api/laser", laser.textContent !== "LASER ON");
+  document.getElementById("zero").onclick = async () => {
+    if (!confirm("Store the latest surface distance as the fill-level zero? "
+                 + "Every krausen height is measured from it.")) return;
+    const r = await fetch("/api/zero", { method: "POST" });
+    if (!r.ok) { alert("No usable measurement to zero on yet."); return; }
+    paint(await r.json());
+  };
   // Poll rather than fetch once: the reading has an age, and an age that never
   // changes is worse than none -- it looks like a live number and is not.
   function refresh() {
@@ -297,7 +322,12 @@ class Handler(server.BaseHTTPRequestHandler):
         # change. A no-op request leaves no other trace, and when hardware that
         # emits a laser beam is involved it should be clear who asked for it.
         log.info("web request from %s: %s on=%s", self.address_string(), parsed.path, on)
-        if parsed.path == "/api/led":
+        if parsed.path == "/api/zero":
+            if self.tracker is None or not hasattr(self.tracker, "set_zero") \
+                    or self.tracker.set_zero() is None:
+                self.send_error(409, "no usable measurement to zero on")
+                return
+        elif parsed.path == "/api/led":
             self.controls.set_led(on)
         elif parsed.path == "/api/laser":
             self.controls.set_laser(on)
@@ -305,6 +335,16 @@ class Handler(server.BaseHTTPRequestHandler):
             self.send_error(404)
             return
         self._send_json(self._state())
+
+    def _tell_tracker(self, n: int) -> None:
+        """Let the PDAF meter focus for a watcher or park when none is left.
+
+        On its own thread: the meter holds the camera for ~20 s while it
+        measures, and the stream must not wait for that to start.
+        """
+        t = self.tracker
+        if t is not None and hasattr(t, "on_viewers"):
+            threading.Thread(target=t.on_viewers, args=(n,), daemon=True).start()
 
     def _state(self) -> dict:
         st = self.controls.state()
@@ -374,6 +414,8 @@ class Handler(server.BaseHTTPRequestHandler):
         self.lamp.acquire()
         with Handler._viewers_lock:
             Handler._viewers += 1
+            n = Handler._viewers
+        self._tell_tracker(n)
         peer = self.address_string()
         log.info("viewer connected: %s at %g fps", peer, fps)
         min_interval = 1.0 / fps
@@ -417,6 +459,7 @@ class Handler(server.BaseHTTPRequestHandler):
                 last = Handler._viewers == 0
             if last:
                 self.controls.reset()
+                self._tell_tracker(0)
             log.info("viewer gone: %s%s", peer, " (last -- manual controls reset)" if last else "")
 
 
@@ -578,6 +621,21 @@ def main() -> int:
                    help="run the module's own autofocus as a cross-check "
                         "every N ranging cycles (0 = never). Shares no "
                         "failure mode with the laser.")
+    p.add_argument("--pdaf-model", metavar="FILE",
+                   help="measure the surface with PDAF against this model file "
+                        "(afmodell.py) instead of the laser. See pdaf_meter.py.")
+    p.add_argument("--measure-interval", type=float, default=300.0,
+                   help="seconds between PDAF measurements. The calibration "
+                        "visited every 300 s; keep it there.")
+    p.add_argument("--zero-file", default="/home/pi/krausencamera/zero.json",
+                   help="where the fill-level zero is kept across restarts")
+    p.add_argument("--log-dir", default="/home/pi/krausencamera/matningar",
+                   help="daily CSV of every PDAF measurement")
+    p.add_argument("--lid-sensor", default=None,
+                   help="DS18B20 id on the lid, logged with each measurement")
+    p.add_argument("--settle-min", type=float, default=75.0,
+                   help="minutes after start during which readings are "
+                        "flagged as warming")
     p.add_argument("--snapshot-interval", type=float, default=300.0,
                    help="seconds between frame A captures, independent of "
                         "--af-interval (default 300)")
@@ -624,7 +682,20 @@ def main() -> int:
         return 2
 
     tracker = None
-    if args.autofocus or (args.no_laser and args.snapshot_dir):
+    if args.pdaf_model:
+        from pdaf_meter import PdafMeter
+        tracker = PdafMeter(
+            picam2, lamp, model_path=args.pdaf_model,
+            interval_s=args.measure_interval, restore_controls=restore,
+            snapshot_dir=args.snapshot_dir,
+            snapshot_interval_s=args.snapshot_interval,
+            snapshot_exposure_us=args.snapshot_exposure_us,
+            zero_path=args.zero_file, log_dir=args.log_dir,
+            lid_sensor=args.lid_sensor, settle_min=args.settle_min,
+            lamp_always_on=True, viewers=lambda: Handler._viewers)
+        Handler.tracker = tracker
+        tracker.start()
+    elif args.autofocus or (args.no_laser and args.snapshot_dir):
         tracker = FocusTracker(
             picam2, lamp, laser, size=MAIN_SIZE,
             interval_s=args.af_interval, laser_exposure_us=args.af_exposure_us,
@@ -642,6 +713,14 @@ def main() -> int:
         Handler.tracker = tracker
         tracker.start()
 
+        if args.no_laser:
+            log.info("no laser: frame A every %.0f s, no ranging",
+                     args.snapshot_interval)
+        else:
+            log.info("autofocus on: ranging every %.0f s, moving past %.1f dpt",
+                     args.af_interval, args.af_threshold)
+
+    if tracker is not None:
         def watchdog(t, period):
             """Exit if the camera stops producing, even without raising.
 
@@ -659,16 +738,11 @@ def main() -> int:
                                  "(limit %.0f) -- exiting for a restart", idle, period)
                     _os._exit(17)
 
-        period = max(args.af_interval, args.snapshot_interval) * 3 + 120
+        period = (max(args.measure_interval, args.snapshot_interval) if args.pdaf_model
+                  else max(args.af_interval, args.snapshot_interval)) * 3 + 120
         threading.Thread(target=watchdog, args=(tracker, period),
                          daemon=True).start()
         log.info("watchdog: exit if no cycle completes within %.0f s", period)
-        if args.no_laser:
-            log.info("no laser: frame A every %.0f s, no ranging",
-                     args.snapshot_interval)
-        else:
-            log.info("autofocus on: ranging every %.0f s, moving past %.1f dpt",
-                     args.af_interval, args.af_threshold)
 
     httpd = Server(("", args.port), Handler)
     log.info("live view on http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",
