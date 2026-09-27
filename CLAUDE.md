@@ -667,6 +667,201 @@ What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
 
+## The new module: settled, and what is left is the lid's temperature (2026-09-15 to 09-27)
+
+Two weeks from the dummy to the real sight glass, through four housings and a
+second camera module. The short version: **every rebuild lost near range until
+the module was glued down with no force on it, and once it had run in, the only
+drift left is the lid's temperature** -- which is measurable and compensable.
+
+### The sight glass does what glass does
+
+The dummy was replaced by the real sight glass, **8 mm of glass** in the beam.
+A slab moves the apparent object nearer by `t(1 - 1/n)`: 2.67 mm predicted for
+ordinary glass, **2.75 mm measured**, which is n = 1.52. Nothing unexpected; the
+calibration absorbs it. The housing was redesigned around it with the camera
+5 mm higher, and the board became a Zero 2 W (see Hardware).
+
+### Every rebuild moved the rail out, and preload was why
+
+All fitted with `b` locked at the old module's 846.29, so `a` carries the change:
+
+| build | `a`, dpt | rail, from the lid |
+|---|---|---|
+| A: the 2026-09-14 module, open back | 0.56 | 36.9 mm |
+| B: new housing, lid over the PCB | 1.08 | 42.1 mm |
+| C: camera 5 mm higher (09-20) | 2.14 | 43.2 mm |
+| D: aluminium plate, pad compressed 0.5 mm | 4.86 | **62.3 mm** |
+| E: **new module glued to the plate, no preload** | 0.15 | **24.8 mm** |
+
+The raise in C shows up in the geometry -- `c` moved +3.96 mm of the 5.00 -- but
+the remount moved `a` by 1.14 dpt and ate the gain. Only range was ever lost,
+three rebuilds running, and the build with by far the highest force on the
+module lost the most. Dose and response point the same way.
+
+**Why D was pressed so hard: the pad relaxes over a day.** The stack the shims
+were drawn against was measured straight after disassembly, and the thermal pad
+had not yet recovered -- it reads 0.3 mm thin for about a day. So the pad was
+compressed 0.5 mm against a designed 0.1.
+
+> **What E cannot separate.** The module and the preload changed together, the
+> confound this file warns against repeatedly. The old module got worse with
+> every handling and never recovered, which suggests pressure can damage a
+> module permanently, but that is not a measurement.
+>
+> Mechanisms tried and dropped along the way: the shim's preload bending the
+> lens against the sensor, the PCB screws, a decentred aperture (there is none),
+> and eddy currents in the aluminium (the larger hysteresis near the rail is
+> explained by working closer to it).
+
+**`b` is per module.** The new module fits 685.73 against the old 846. Locking
+`b` across modules produced an 11.6 mm residual that was entirely the lock. Each
+module has its own VCM gain, and nothing in a calibration transfers between them.
+
+The rail at 24.8 mm sits **10 mm inside the tank's 35 mm shoulder**, the first
+time focus has reached into the neck. 32.40 mm is measured and converges.
+
+### The aluminium plate: 56 C to 40 C
+
+A turned plate between the module and the sight glass steel, with thermal paste,
+so the camera's heat goes into the lid instead of being shut in by the housing.
+
+| | before | with the plate |
+|---|---|---|
+| camera at equilibrium | 56.0 C | **40.0 C** |
+| optical wander during warm-up | ~0.44 dpt | **0.177 dpt** |
+| warm-up time | 43-65 min | 71 min |
+
+The warm-up got longer because the plate is mass: `tau = C/G`, and C grew more
+than G. The excursion is what puts error into a measurement, and it more than
+halved. `--warmup-max` is now 100 and afwatch's `--warmup-wait` 110; the
+default 45 would have restarted a session against a camera still warming.
+
+### AfWindows works and does not matter
+
+Metering left against right half of the frame differs by 0.054 dpt, 3.6 sigma.
+Real, and too small to explain anything. Not used.
+
+### The new module's table, two nights
+
+```
+night 1   dpt = 0.1499 + 686.15/(d + 21.360)    rail 24.8 mm
+night 2   dpt = 0.1134 + 684.27/(d + 21.210)    rail 24.8 mm
+          drift-corrected, visits after 218 mm left out (see below)
+```
+
+Thirteen heights, 32.40-218.40 mm, 205 and 200 points, **zero failures**. The
+shape holds between nights to a fraction of a percent; only `a` moved, and that
+is the drift.
+
+**Inside 125 mm the model alone is good to 0.24 mm rms, and a correction table
+does not help.** Night 1's residuals applied to night 2 give 0.26. The pattern
+repeats at r = +0.67 between nights, against +0.887 for the old module. So
+something still varies from night to night at the few-tenths level, and it is
+not known what.
+
+**Beyond it the model misses by +0.9 to +1.8 mm at 158 mm and +3.7 to +5.3 at
+218, the same sign both nights.** Part of it is probably the exposure effect
+below; 158 mm cannot be, since it already runs at 30 fps.
+
+### The drift was settling in operating time, and it has run out
+
+At the reference height the reading moved farther by about 0.12 mm/h over the
+first night. It is **the same in dioptres at every height**, -4 mdpt/h from
+32 to 218 mm, so it is a shift of the zero and not of the shape -- which means
+one known point would correct every height, and that the rail moves with it by
+only ~0.01 mm/h, since a dioptre is ~3 mm there.
+
+```
+                                         drift at 123.40 mm
+night 1, first 10 h                         0.139 mm/h
+night 2, first 10 h                         0.105
+interval test, lid temperature removed      0.013
+```
+
+It **follows operating time, not clock time**. Over a 7.9 h pause with the
+camera closed for 6.6 h of it, the reference moved at most a third of what
+continuous drift predicts. And it is not new: the old module drifted as much,
+with the sign changing between nights (+0.17, -0.07 mm/h). Integrated over
+every hour of running it comes to ~0.02 dpt, **a hundred times too small to
+have caused the rail creep** above -- which moved in steps at rebuilds.
+
+So a fresh module wants a few days of running before its table is taken. After
+four days this one is at a tenth of where it started.
+
+### What is left is the lid's temperature: -1.6 mm per degree at 123 mm
+
+48 hours at one height (`intervalltest.sh`), 864 points. On the Friday evening
+Love worked at the bench the rig stands on; the air outside the box rose 1.2 C
+and the reading moved 1.2 mm nearer. Reversals both ways, the target still
+throughout (`niva` 115.5-116.3).
+
+| covariate | lag | coefficient | residual rms |
+|---|---|---|---|
+| TC ferrule on the lid | **~10 min** | -1.6 mm/C | **0.15 mm** |
+| box air | 50 min | -1.4 mm/C | 0.16 mm |
+| air outside the box | 60 min | -0.9 mm/C | 0.24 mm |
+| time only | | | 0.38 mm |
+
+**The camera follows the lid, not the air.** Through the plate it is bolted to
+the sight glass steel, and the ferrule leads the air by an hour. That is what
+the plate was built to do, seen from the other side.
+
+-1.6 mm/C at 123 mm is **0.053 dpt/C**. If it is uniform in dioptres like the
+drift, it is ~0.4 mm/C at 50 mm, where krausen lives. A 4 C ramp at the end of
+a fermentation is then ~1.5 mm. Compensable: **a DS18B20 in a pocket in the
+aluminium plate**, and the coefficient becomes one more constant measured per
+build. A calibration night's natural 1-2 C swing turned out to be enough to fit
+it.
+
+> **This does not contradict "it is not ambient" of 2026-09-12.** Then the
+> lens's holding current swung the camera twelve degrees and ambient was lost
+> underneath it. Parking removed the swing, the plate removed most of the
+> self-heating, and what is left is what was always there.
+
+With the lid's temperature removed the point-to-point noise at a fixed height
+is **~0.1 mm** at 123 mm, when the stage and the exposure never change.
+
+### The AF rate: small, reversible, and not wear
+
+The interval test alternated four-hour blocks of one visit per ten minutes and
+one per two minutes -- five times the lens motion for the same time.
+Temperature-corrected: **+0.053 +- 0.017 mm/h in the fast blocks, -0.029 +-
+0.018 in the slow**, five of six fast blocks the same sign. A sawtooth of
+0.1-0.2 mm that comes back, so not wear. The mechanism is unknown. In service
+the rate is constant, so it has nothing to act on.
+
+### Long exposures cool the sensor
+
+After every visit to 218 mm the reference read **24 mdpt low, 6 of 6 on both
+nights** (-13 to -30), against -2 to +6 after any other height. Leaving those
+points out halves the reference's scatter, 0.31 to 0.13-0.16 mm.
+
+`af_calibrate` sets the frame duration to `max(33333, exposure + 1000)`, so
+every exposure up to ~32 ms runs at 30 fps and only the 50 ms chosen at 218 mm
+lengthens the frame. The sensor reads out less often and runs at 43 C against
+46 everywhere else, and has not recovered five minutes later.
+
+Since auto exposure makes exposure a function of distance, this is a
+distance-correlated confound of exactly the kind that hides in the fit. Night
+af15 (started 2026-09-27) caps exposures at 32000 us, `kalibrering.sh
+--exposures`, so every height runs at 30 fps. The predictions: the dip after
+218 mm disappears, and 218's residual shrinks by up to ~2 mm. 158's cannot.
+
+### Tooling from these two weeks
+
+- `kalibrering.sh` is one command per night: distances in, stage Z computed,
+  service stopped, temperature log and watchdog started, stage moved to the
+  reference **before** the warm-up. On 2026-09-23 the warm-up started 60 mm
+  from the reference because the script left the stage where the last run did.
+- `railjakt.sh` searches inward as well as outward. It only walked outward, and
+  would have reported 46.40 mm for a module that converges at 32.40.
+- `autocal.py --blocks 600x4,120x4` alternates the visit rate at one height,
+  moving the stage once. The schedule is anchored to `--t0`, carried in the
+  command afwatch restarts, so a restart resumes the right block.
+- afwatch: the two bugs that ate the night of 2026-09-18 are fixed and covered
+  by seven unit tests.
+
 ## The calibration, finished (2026-09-14)
 
 267 measurements across two nights, both with the lens parked, ten heights in
