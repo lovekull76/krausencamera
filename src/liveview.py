@@ -322,7 +322,12 @@ class Handler(server.BaseHTTPRequestHandler):
         # change. A no-op request leaves no other trace, and when hardware that
         # emits a laser beam is involved it should be clear who asked for it.
         log.info("web request from %s: %s on=%s", self.address_string(), parsed.path, on)
-        if parsed.path == "/api/zero":
+        if parsed.path == "/api/lampmode":
+            if self.tracker is None or not hasattr(self.tracker, "set_lamp_mode"):
+                self.send_error(404)
+                return
+            self.tracker.set_lamp_mode(on)
+        elif parsed.path == "/api/zero":
             if self.tracker is None or not hasattr(self.tracker, "set_zero") \
                     or self.tracker.set_zero() is None:
                 self.send_error(409, "no usable measurement to zero on")
@@ -633,6 +638,12 @@ def main() -> int:
                    help="daily CSV of every PDAF measurement")
     p.add_argument("--lid-sensor", default=None,
                    help="DS18B20 id on the lid, logged with each measurement")
+    p.add_argument("--lamp-mode", choices=("always", "measure"), default="always",
+                   help="PDAF meter: hold the IR lamp on, or light it only to "
+                        "measure and for viewers. Switchable at runtime with "
+                        "POST /api/lampmode?on=0|1")
+    p.add_argument("--snapshot-quality", type=int, default=95,
+                   help="JPEG quality of frame A")
     p.add_argument("--settle-min", type=float, default=75.0,
                    help="minutes after start during which readings are "
                         "flagged as warming")
@@ -692,7 +703,9 @@ def main() -> int:
             snapshot_exposure_us=args.snapshot_exposure_us,
             zero_path=args.zero_file, log_dir=args.log_dir,
             lid_sensor=args.lid_sensor, settle_min=args.settle_min,
-            lamp_always_on=True, viewers=lambda: Handler._viewers)
+            lamp_always_on=args.lamp_mode == "always",
+            snapshot_quality=args.snapshot_quality,
+            viewers=lambda: Handler._viewers)
         Handler.tracker = tracker
         tracker.start()
     elif args.autofocus or (args.no_laser and args.snapshot_dir):

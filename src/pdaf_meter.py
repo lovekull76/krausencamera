@@ -113,7 +113,7 @@ class PdafMeter:
                  snapshot_interval_s=300.0, snapshot_exposure_us=15000,
                  zero_path="zero.json", log_dir="matningar",
                  lid_sensor=None, settle_min=75.0, lamp_always_on=True,
-                 viewers=lambda: 0) -> None:
+                 snapshot_quality=95, viewers=lambda: 0) -> None:
         from libcamera import controls
         import af_calibrate as afc
 
@@ -127,6 +127,7 @@ class PdafMeter:
         self._snap_dir = snapshot_dir
         self._snap_interval = snapshot_interval_s
         self._snap_exposure = snapshot_exposure_us
+        self._snap_quality = snapshot_quality
         self._last_snap = 0.0
         self._zero_path = zero_path
         self._log_dir = log_dir
@@ -154,9 +155,8 @@ class PdafMeter:
         if snapshot_dir:
             os.makedirs(snapshot_dir, exist_ok=True)
         os.makedirs(log_dir, exist_ok=True)
-        if lamp_always_on:
-            lamp.acquire()
-            log.info("IR lamp held on continuously, as during calibration")
+        self.lamp_always_on = False
+        self.set_lamp_mode(lamp_always_on)
         log.info("model %s: dpt = %.4f + %.2f/(d + %.4f), fitted to %.0f mm, "
                  "%d corrections applied", model_path, self.model.a, self.model.b,
                  self.model.c, self.model.fit_max, len(self.model.corr_d))
@@ -172,6 +172,30 @@ class PdafMeter:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=30.0)
+
+    # -- lamp --------------------------------------------------------------
+
+    # Seconds the lamp is lit before the first AF cycle when it is not held
+    # on. Lamp.acquire() already waits for the LEDs to come up; this is for the
+    # frames already in flight, which were exposed dark.
+    LAMP_LEAD_S = 2.0
+
+    def set_lamp_mode(self, always: bool) -> None:
+        """Hold the lamp on continuously, or light it only to measure.
+
+        Continuous matches the calibration nights. Measure-only is the lighter
+        option, and whether the lamp's heat in the lid moves the reading is
+        what the switch exists to find out (lamptest.sh). A viewer lights it
+        either way through the page's own reference count.
+        """
+        if always and not self.lamp_always_on:
+            self._lamp.acquire()
+        elif not always and self.lamp_always_on:
+            self._lamp.release()
+        if always != self.lamp_always_on:
+            log.info("IR lamp: %s", "held on continuously, as during calibration"
+                     if always else "lit only to measure and for viewers")
+        self.lamp_always_on = always
 
     # -- zero --------------------------------------------------------------
 
@@ -215,6 +239,7 @@ class PdafMeter:
     def state(self) -> dict:
         s = dict(self.last or {})
         s["busy"] = self.busy
+        s["lamp_always_on"] = self.lamp_always_on
         s["age_s"] = None if not self.last else round(time.time() - self.last["t"])
         s["zero_mm"] = None if not self.zero else self.zero["d_mm"]
         # names the page already knows
@@ -225,10 +250,13 @@ class PdafMeter:
     def measure(self) -> dict:
         afc, args, picam2 = self._afc, self._args, self._picam2
         quiet = io.StringIO()
-        dark = not self._lamp.is_lit
         with self._cam:
             self.busy = True
+            self._lamp.acquire()
             try:
+                if not self.lamp_always_on:
+                    time.sleep(self.LAMP_LEAD_S)
+                dark = not self._lamp.is_lit
                 # The live view runs auto exposure; pick_exposure only sets the
                 # time, and with AE still on the request would be ignored.
                 picam2.set_controls({"AeEnable": False, "AnalogueGain": 1.0})
@@ -240,6 +268,7 @@ class PdafMeter:
                                          "LensPosition": float(np.mean(lo + hi))})
             finally:
                 picam2.set_controls(dict(self._restore))
+                self._lamp.release()
                 self.busy = False
 
         v = lo + hi
@@ -278,7 +307,7 @@ class PdafMeter:
     def _railed(self) -> bool:
         """One more AF cycle, only to ask whether the lens is at its stop."""
         c, picam2 = self._controls, self._picam2
-        with self._cam:
+        with self._cam, self._lamp.held():
             picam2.set_controls(self._afc.af_controls(c, self._args))
             picam2.set_controls({"AfTrigger": c.AfTriggerEnum.Start})
             t0, lp = time.time(), None
@@ -316,7 +345,7 @@ class PdafMeter:
                 if dpt:
                     ctl.update(AfMode=0, LensPosition=float(dpt))
                 picam2.set_controls(ctl)
-                time.sleep(1.6)
+                time.sleep(1.6 if self.lamp_always_on else max(1.6, self.LAMP_LEAD_S))
                 for _ in range(4):
                     picam2.capture_array("main")
                 a = picam2.capture_array("main")
@@ -327,7 +356,7 @@ class PdafMeter:
                     self._park()
         stamp = time.strftime("%Y%m%d-%H%M%S")
         path = os.path.join(self._snap_dir, f"A-{stamp}.jpg")
-        Image.fromarray(a[:, :, :3][:, :, ::-1]).save(path, quality=88)
+        Image.fromarray(a[:, :, :3][:, :, ::-1]).save(path, quality=self._snap_quality)
         log.info("frame A -> %s (%.0f mean, focus %s)", os.path.basename(path),
                  a[:, :, :3].mean(), f"{dpt:.2f} dpt" if dpt else "parked")
 
