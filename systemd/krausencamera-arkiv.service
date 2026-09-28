@@ -1,0 +1,16 @@
+[Unit]
+Description=Krausencamera: copy the local archive to the NAS
+# Separate from the camera service on purpose: the service writes locally and
+# never waits on the network. See src/arkivsynk.sh.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+ExecStart=/home/pi/krausencamera/arkivsynk.sh
+# A hung NAS must not leave a sync running into the next one.
+TimeoutStartSec=15min
+Nice=10
+IOSchedulingClass=idle
+SyslogIdentifier=krausencamera-arkiv

@@ -1,0 +1,10 @@
+# The NAS share the archive is copied to. One line in /etc/fstab; the real
+# address is in LOCAL.md. Credentials go in /etc/krausencamera-smb.cred,
+# mode 600, owned by root:
+#     username=...
+#     password=...
+#
+# nofail + x-systemd.automount: the Pi boots and the service runs whether or
+# not the NAS is there, and the share is mounted on first access. soft: a NAS
+# that disappears returns errors instead of hanging whatever touched it.
+//<nas-ip>/krausen_cam /mnt/krausen_cam cifs credentials=/etc/krausencamera-smb.cred,uid=pi,gid=pi,vers=3.0,soft,_netdev,nofail,x-systemd.automount,x-systemd.idle-timeout=600,x-systemd.mount-timeout=30 0 0

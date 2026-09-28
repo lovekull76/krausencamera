@@ -1,0 +1,11 @@
+[Unit]
+Description=Krausencamera: archive to the NAS every ten minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+# Catch up after the Pi has been off rather than waiting a full interval.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
