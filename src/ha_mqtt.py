@@ -5,6 +5,8 @@
     krausencamera/<id>/state    one JSON per point   NOT retained
     krausencamera/<id>/cmd/zero PRESS                never retained
     krausencamera/<id>/cmd/batch PRESS               never retained
+    krausencamera/<id>/cmd/record ON | OFF           never retained
+    krausencamera/<id>/recording  ON | OFF           the switch's state, on change
     homeassistant/device/<id>/config                 retained, device discovery
 
 **One availability for the whole device.** Device discovery puts every entity
@@ -53,7 +55,8 @@ STATUSES = list(STATUS_EN.values())
 
 class HaMqtt:
     def __init__(self, cfg: dict, *, device_id: str | None = None,
-                 on_zero=None, on_batch=None, interval_s: float = 300.0) -> None:
+                 on_zero=None, on_batch=None, on_record=None,
+                 interval_s: float = 300.0) -> None:
         import paho.mqtt.client as mqtt
 
         self.id = device_id or cfg.get("device_id") or socket.gethostname()
@@ -70,6 +73,9 @@ class HaMqtt:
         self._expire = int(cfg.get("expire_after", 3 * interval_s))
         self._on_zero = on_zero
         self._on_batch = on_batch
+        self._on_record = on_record
+        self._recording = "OFF"
+        self.t_rec = f"{self.base}/recording"
         self._last: str | None = None
         self._lock = threading.Lock()
 
@@ -133,6 +139,11 @@ class HaMqtt:
             log.info("mqtt: zero requested")
             if self._on_zero:
                 self._on_zero()
+        elif msg.topic == f"{self.t_cmd}/record":
+            log.info("mqtt: recording %s requested", payload)
+            if self._on_record:
+                threading.Thread(target=self._on_record, args=(payload == "ON",),
+                                 daemon=True).start()
         elif msg.topic == f"{self.t_cmd}/batch":
             log.info("mqtt: new batch requested")
             if self._on_batch:
@@ -145,6 +156,13 @@ class HaMqtt:
             last = self._last
         if last is not None:
             self._c.publish(self.t_state, last, qos=1, retain=False)
+        self._c.publish(self.t_rec, self._recording, qos=1, retain=False)
+
+    def publish_recording(self, st: dict) -> None:
+        """The recording switch's state, the moment it changes -- not on the
+        five-minute measurement clock."""
+        self._recording = "ON" if st.get("recording") else "OFF"
+        self._c.publish(self.t_rec, self._recording, qos=1, retain=False)
 
     def publish(self, r: dict, zero_mm: float | None, batch: str | None = None) -> None:
         """One measurement from PdafMeter, as the state JSON."""
@@ -210,6 +228,10 @@ class HaMqtt:
                        "exp_aft": exp},
             "batch": sensor("batch", "Batch", "{{ value_json.batch }}",
                             icon="mdi:beer"),
+            "rec": {"p": "switch", "unique_id": f"{i}_rec", "name": "Recording",
+                    "icon": "mdi:record-rec",
+                    "cmd_t": f"{self.t_cmd}/record", "stat_t": self.t_rec,
+                    "pl_on": "ON", "pl_off": "OFF", "ret": False},
             "nybatch": {"p": "button", "unique_id": f"{i}_nybatch",
                         "name": "Start new batch",
                         "cmd_t": f"{self.t_cmd}/batch", "pl_prs": "PRESS",

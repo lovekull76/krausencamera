@@ -38,7 +38,10 @@ from focus_tracker import FocusTracker
 log = logging.getLogger("liveview")
 
 MAIN_SIZE = (2304, 1296)
-LORES_SIZE = (1024, 576)   # default, overridden by --lores
+# 1280x720 so a dry-hop recording is 720p. Both dimensions are multiples of 16
+# (see --lores). af_calibrate uses the same, so a calibration is taken under
+# the configuration the service runs.
+LORES_SIZE = (1280, 720)
 
 # The sensor delivers 30 fps. Watching whether anything is happening at all
 # needs a small fraction of that; watching hops being drawn under by the
@@ -70,6 +73,8 @@ PAGE = """<!DOCTYPE html>
   .rates button.on { background: #ddd; color: #111; border-color: #ddd; }
   .hw button.on { background: #2e7d32; border-color: #2e7d32; color: #fff; }
   .hw button.laser.on { background: #c62828; border-color: #c62828; color: #fff; }
+  .hw button.rec { color: #e57373; }
+  .hw button.rec.on { background: #c62828; border-color: #c62828; color: #fff; }
   .focus { margin-left: 0.8em; opacity: 0.75; font-variant-numeric: tabular-nums; }
   .meta { opacity: .6; font-variant-numeric: tabular-nums; text-align: center; }
 </style>
@@ -84,6 +89,7 @@ PAGE = """<!DOCTYPE html>
     <span id="exp" class="focus"></span>
   </div>
   <div class="row hw" id="zerorow" hidden>
+    <button id="rec" class="rec">&#9679; REC</button>
     <button id="batch">Start new batch</button>
     <button id="zero">Set zero at fill level</button>
     <span id="zeroinfo" class="focus"></span>
@@ -143,6 +149,12 @@ PAGE = """<!DOCTYPE html>
         : words[f.status] + "surface " + f.d_mm.toFixed(1) + " mm"
           + (f.krausen_mm !== null ? " \u00b7 krausen " + f.krausen_mm.toFixed(1) + " mm" : "")
           + " \u00b7 " + f.dpt.toFixed(3) + " dpt \u00b7 " + f.age_s + " s ago";
+      const rec = document.getElementById("rec"), rs = st.recording || {};
+      rec.classList.toggle("on", !!rs.recording);
+      const mmss = s => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+      rec.innerHTML = rs.recording
+        ? "&#9679; REC " + mmss(rs.elapsed_s) + " / " + mmss(rs.max_s) + " \u00b7 stop"
+        : "&#9679; REC";
       document.getElementById("zeroinfo").textContent =
         (f.batch ? "batch " + f.batch : "no batch") + " \u00b7 "
         + (f.zero_mm === null ? "no zero set" : "zero at " + f.zero_mm.toFixed(1) + " mm");
@@ -162,6 +174,12 @@ PAGE = """<!DOCTYPE html>
   }
   led.onclick = () => toggle("/api/led", led.textContent !== "IR on");
   laser.onclick = () => toggle("/api/laser", laser.textContent !== "LASER ON");
+  document.getElementById("rec").onclick = async () => {
+    const on = !document.getElementById("rec").classList.contains("on");
+    const r = await fetch("/api/record?on=" + (on ? 1 : 0), { method: "POST" });
+    if (!r.ok) { alert("Recording is not available on this service."); return; }
+    paint(await r.json());
+  };
   document.getElementById("batch").onclick = async () => {
     if (!confirm("Start a new batch? Frames and logs go to a new folder, "
                  + "and the zero is cleared until the tank is zeroed again.")) return;
@@ -300,6 +318,7 @@ class Handler(server.BaseHTTPRequestHandler):
     lamp: Lamp
     controls: Controls
     tracker = None
+    recorder = None
     picam2 = None
     stream_timeout: float
     default_fps: float
@@ -331,7 +350,12 @@ class Handler(server.BaseHTTPRequestHandler):
         # change. A no-op request leaves no other trace, and when hardware that
         # emits a laser beam is involved it should be clear who asked for it.
         log.info("web request from %s: %s on=%s", self.address_string(), parsed.path, on)
-        if parsed.path == "/api/lampmode":
+        if parsed.path == "/api/record":
+            if self.recorder is None:
+                self.send_error(404)
+                return
+            self.recorder.start() if on else self.recorder.stop()
+        elif parsed.path == "/api/lampmode":
             if self.tracker is None or not hasattr(self.tracker, "set_lamp_mode"):
                 self.send_error(404)
                 return
@@ -378,6 +402,8 @@ class Handler(server.BaseHTTPRequestHandler):
                 pass
         if self.tracker is not None:
             st["focus"] = self.tracker.state()
+        if self.recorder is not None:
+            st["recording"] = self.recorder.state()
         return st
 
     def _send_json(self, obj: dict) -> None:
@@ -591,7 +617,7 @@ def main() -> int:
     p.add_argument("--red-gain", type=float, default=0.94)
     p.add_argument("--blue-gain", type=float, default=1.01)
     p.add_argument("--bitrate", type=int, default=12_000_000)
-    p.add_argument("--lores", default="1024x576",
+    p.add_argument("--lores", default="%dx%d" % LORES_SIZE,
                    help="size of the stream the web view encodes. Keep both "
                         "dimensions multiples of 16: JPEG codes in 16x16 blocks, "
                         "and 1152x648 -- exactly 16:9 but 648 is not -- produced "
@@ -663,6 +689,8 @@ def main() -> int:
     p.add_argument("--archive-dir", default=None,
                    help="batch folders for frame A and per-batch logs, synced "
                         "to the NAS by arkivsynk.sh. Overrides --snapshot-dir.")
+    p.add_argument("--record-max-s", type=float, default=300.0,
+                   help="a dry-hop recording stops by itself after this long")
     p.add_argument("--snapshot-quality", type=int, default=95,
                    help="JPEG quality of frame A")
     p.add_argument("--settle-min", type=float, default=75.0,
@@ -715,6 +743,7 @@ def main() -> int:
 
     tracker = None
     ha = None
+    recorder = None
     if args.pdaf_model:
         from pdaf_meter import PdafMeter
         batches = None
@@ -734,6 +763,12 @@ def main() -> int:
             snapshot_quality=args.snapshot_quality, batches=batches,
             viewers=lambda: Handler._viewers)
         Handler.tracker = tracker
+        from recorder import Recorder
+        recorder = Recorder(
+            picam2, lamp, tracker, max_s=args.record_max_s,
+            video_dir=(lambda: batches.dir("video")) if batches
+            else (lambda: "/home/pi/video"))
+        Handler.recorder = recorder
         if args.mqtt_config:
             import json as _json
             from ha_mqtt import HaMqtt
@@ -741,8 +776,10 @@ def main() -> int:
                 mqtt_cfg = _json.load(f)
             ha = HaMqtt(mqtt_cfg, on_zero=tracker.set_zero,
                         on_batch=tracker.new_batch,
+                        on_record=lambda on: recorder.start() if on else recorder.stop(),
                         interval_s=args.measure_interval)
             tracker.listeners.append(ha.publish)
+            recorder.listeners.append(ha.publish_recording)
             ha.start()
         tracker.start()
     elif args.autofocus or (args.no_laser and args.snapshot_dir):
@@ -809,6 +846,8 @@ def main() -> int:
         log.info("shutting down")
     finally:
         httpd.shutdown()
+        if recorder and recorder.recording:
+            recorder.stop()          # close the MP4 properly, or it is unplayable
         if ha:
             ha.stop()
         if tracker:

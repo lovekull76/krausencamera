@@ -726,10 +726,10 @@ def main() -> int:
     picam2 = Picamera2()
     # Same two streams as liveview, so the calibration is measured under the
     # configuration the service actually runs.
-    from liveview import MAIN_SIZE, FrameBroker
+    from liveview import MAIN_SIZE, LORES_SIZE, FrameBroker
     picam2.configure(picam2.create_video_configuration(
         main={"size": MAIN_SIZE},
-        lores={"size": (1024, 576), "format": "YUV420"}))
+        lores={"size": LORES_SIZE, "format": "YUV420"}))
     picam2.set_controls({"AeEnable": False, "ExposureTime": args.exposure_us,
                          "AnalogueGain": 1.0, "AwbEnable": False,
                          "ColourGains": (0.94, 1.01)})

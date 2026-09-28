@@ -156,6 +156,9 @@ class PdafMeter:
         self._max_fails = 3
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        # Set while a recording runs: no measurement, no frame A, no parking.
+        self._paused = threading.Event()
+        self._after_recording = False
 
         if snapshot_dir:
             os.makedirs(snapshot_dir, exist_ok=True)
@@ -254,8 +257,31 @@ class PdafMeter:
 
     # -- viewers -----------------------------------------------------------
 
+    def pause(self) -> None:
+        """Hold off measuring for a recording, and focus on the surface.
+
+        Takes the camera lock, so it waits for a measurement in progress to
+        finish rather than cutting into it.
+        """
+        self._paused.set()
+        with self._cam:
+            if self.last and self.last.get("dpt"):
+                self._picam2.set_controls({"AfMode": 0, "LensPosition": float(self.last["dpt"])})
+        log.info("measurement paused for a recording")
+
+    def resume(self) -> None:
+        self._paused.clear()
+        self._after_recording = True
+        if self._viewers() == 0:
+            with self._cam:
+                self._park()
+        log.info("measurement resumed")
+
     def on_viewers(self, n: int) -> None:
-        """Focus for a watcher, park when nobody is. Never mid-measurement."""
+        """Focus for a watcher, park when nobody is. Never mid-measurement,
+        and never during a recording -- the film would go out of focus."""
+        if self._paused.is_set():
+            return
         with self._cam:
             if n > 0 and self.last and self.last.get("dpt"):
                 self._picam2.set_controls({"AfMode": 0, "LensPosition": float(self.last["dpt"])})
@@ -400,9 +426,20 @@ class PdafMeter:
                  "readings flagged as warming for %.0f min", self._interval,
                  self._snap_interval, self._settle_s / 60)
         while not self._stop.is_set():
+            if self._paused.is_set():
+                self._stop.wait(5.0)
+                self.last_ok = time.time()     # a recording is not a hang
+                continue
             t0 = time.monotonic()
             try:
                 r = self.measure()
+                if self._after_recording:
+                    # The lens was held powered for the recording, and the
+                    # holding current warms the module (2026-09-12).
+                    r["efter_inspelning"] = True
+                    self._after_recording = False
+                    log.info("this point follows a recording -- the lens was "
+                             "held powered for it")
                 self.last = r
                 self._write(r)
                 if self.batches:
