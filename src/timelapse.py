@@ -337,6 +337,29 @@ function burnCaption(g, i, s) {
   g.fillStyle = css("--ink"); g.font = mid; g.fillText(c.t, 20 * s, 46 * s);
   g.fillStyle = css("--dim"); g.font = small; g.fillText(c.s, 20 * s, 63 * s);
 }
+// Opened as a file -- straight off the NAS -- every image counts as foreign to
+// the page, and drawing one onto a canvas taints it: the recorder then gets
+// nothing and the film comes out empty. So in that case the export asks for the
+// batch folder once and reads the frames itself, which the browser allows
+// (Chrome and Edge). Served over http the images are same-origin and load as
+// usual.
+let bilderDir = null;
+async function frameSource() {
+  if (location.protocol !== "file:") return i => loadImg(i);
+  if (!window.showDirectoryPicker) return null;
+  if (!bilderDir) {
+    $("exportmsg").textContent = "Choose this batch's folder (" + D.name + ") so the export can read the frames.";
+    let dir;
+    try { dir = await showDirectoryPicker({ id: "krausen-batch", mode: "read" }); }
+    catch (e) { return null; }
+    try { bilderDir = await dir.getDirectoryHandle("bilder"); }
+    catch (e) { alert("That folder has no bilder/ in it. Choose the batch folder itself (" + D.name + ")."); return null; }
+  }
+  return async i => {
+    const name = F[i][0].split("/").pop();
+    return createImageBitmap(await (await bilderDir.getFileHandle(name)).getFile());
+  };
+}
 let cancelled = false;
 $("cancel").onclick = () => { cancelled = true; };
 $("export").onclick = async () => {
@@ -345,9 +368,20 @@ $("export").onclick = async () => {
   const fps = +$("speed").value;
   const mime = ["video/mp4;codecs=avc1.640033", "video/mp4", "video/webm;codecs=vp9", "video/webm"]
     .find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
-  if (!mime) { alert("This browser cannot record video. Try Chrome or Safari."); return; }
-  const first = await loadImg(0);
-  const IW = first.naturalWidth, IH = first.naturalHeight;
+  if (!mime) { alert("This browser cannot record video. Try Chrome or Edge."); return; }
+  $("exportbar").hidden = false; $("dl").hidden = true;
+  const get = await frameSource();
+  if (!get) {
+    $("exportmsg").textContent = location.protocol === "file:" && !window.showDirectoryPicker
+      ? "Opened as a file, this browser cannot hand the frames to the recorder. Open the page in Chrome or Edge."
+      : "Export cancelled.";
+    return;
+  }
+  // Read ahead a few frames so decoding keeps up with the chosen rate.
+  const ahead = new Map();
+  const fetchFrame = i => { if (i < F.length && !ahead.has(i)) ahead.set(i, get(i)); return ahead.get(i); };
+  const first = await fetchFrame(0);
+  const IW = first.naturalWidth || first.width, IH = first.naturalHeight || first.height;
   const s = IW / 1200, CH = Math.round(IH * 0.26 / 2) * 2;
   const film = document.createElement("canvas");
   film.width = IW; film.height = IH + CH;
@@ -357,20 +391,27 @@ $("export").onclick = async () => {
   const chunks = [];
   rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   const stopped = new Promise(r => rec.onstop = r);
+  // Refuse rather than record black: a tainted canvas yields an empty film.
+  g.drawImage(first, 0, 0, IW, IH);
+  try { g.getImageData(0, 0, 1, 1); }
+  catch (e) { $("exportmsg").textContent = "The browser will not let the page record these images. Open it in Chrome or Edge."; return; }
   cancelled = false;
-  $("export").disabled = true; $("exportbar").hidden = false; $("dl").hidden = true; $("cancel").hidden = false;
+  $("export").disabled = true; $("cancel").hidden = false;
   rec.start(1000);
   let due = performance.now();
   for (let i = 0; i < F.length && !cancelled; i++) {
-    let im = cache.get(i);
-    if (!(im && im.complete && im.naturalWidth)) {
-      rec.pause(); im = await loadImg(i); rec.resume(); due = performance.now();
-    }
-    for (let k = 1; k <= 24; k++) load(i + k);
+    for (let k = 1; k <= 8; k++) fetchFrame(i + k);
+    let im = null;
+    const p = fetchFrame(i);
+    im = await Promise.race([p, new Promise(r => setTimeout(() => r(null), 5))]);
+    if (!im) { rec.pause(); im = await p; rec.resume(); due = performance.now(); }
+    ahead.delete(i);
     g.drawImage(im, 0, 0, IW, IH);
+    if (im.close) im.close();
     burnCaption(g, i, s);
     g.save(); g.translate(0, IH); chart(g, IW, CH, s, F[i][1], true); g.restore();
     track.requestFrame();
+    if (i % 2 === 0) show(i);      // let the page play along, so it is visibly working
     $("exportmsg").textContent = `Recording frame ${i + 1} of ${F.length} at ${fps} fps — keep this tab visible`;
     due += 1000 / fps;
     await new Promise(r => setTimeout(r, Math.max(0, due - performance.now())));
