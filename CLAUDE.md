@@ -1967,8 +1967,14 @@ Develop locally in this folder → deploy with `rsync` over SSH → run as a sys
 service on the Pi. No sshfs/Samba mount: slow and fragile over WiFi.
 
 ```bash
-rsync -avz --delete --exclude '.git' ./src/ krausencamera:~/krausencamera/
+rsync -avz --exclude '.git' --exclude '__pycache__' ./src/ krausencamera:~/krausencamera/
 ```
+
+> **Never `--delete` here.** The Pi's `~/krausencamera` also holds what only
+> exists there: `mqtt.json` (credentials), `zero.json` (the fill-level zero),
+> `af-model.csv` (the model the service reads), `matningar/` (every
+> measurement) and the calibration sessions. `--delete` would remove all of it,
+> because none of it is in `src/`.
 
 ## Architecture (settled 2026-09-02)
 

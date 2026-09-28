@@ -41,8 +41,13 @@ import time
 
 log = logging.getLogger(__name__)
 
-STATUSES = ["ok", "uppvarmning", "i_halsen", "utanfor_kalibrering",
-            "misslyckad", "morkt"]
+# Home Assistant here runs in English, and an MQTT enum shows its raw values,
+# so the service's internal (Swedish) states are translated on the way out.
+# The CSV and the page keep the internal names.
+STATUS_EN = {"ok": "ok", "uppvarmning": "warming up", "i_halsen": "in the neck",
+             "utanfor_kalibrering": "beyond calibration",
+             "misslyckad": "no focus", "morkt": "lamp off"}
+STATUSES = list(STATUS_EN.values())
 
 
 class HaMqtt:
@@ -141,7 +146,7 @@ class HaMqtt:
         tid = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(r["t"]))
         tz = time.strftime("%z", time.localtime(r["t"]))
         body = {
-            "status": r.get("status"),
+            "status": STATUS_EN.get(r.get("status"), r.get("status")),
             "krausen_mm": r.get("krausen_mm") if ok else None,
             "avstand_mm": r.get("d_mm") if ok else None,
             "i_halsen": r.get("status") == "i_halsen",
@@ -166,38 +171,38 @@ class HaMqtt:
                     "stat_t": self.t_state, "val_tpl": tpl, "exp_aft": exp, **kw}
 
         cmps = {
-            "krausen": sensor("krausen", "Krausenhöjd", "{{ value_json.krausen_mm }}",
+            "krausen": sensor("krausen", "Krausen height", "{{ value_json.krausen_mm }}",
                               dev_cla="distance", unit_of_meas="mm",
                               stat_cla="measurement", sug_dsp_prc=1),
-            "avstand": sensor("avstand", "Avstånd till ytan", "{{ value_json.avstand_mm }}",
+            "avstand": sensor("avstand", "Distance to surface", "{{ value_json.avstand_mm }}",
                               dev_cla="distance", unit_of_meas="mm",
                               stat_cla="measurement", sug_dsp_prc=1),
-            "status": sensor("status", "Tillstånd", "{{ value_json.status }}",
+            "status": sensor("status", "Status", "{{ value_json.status }}",
                              dev_cla="enum", ops=STATUSES),
-            "senast": sensor("senast", "Senaste mätning", "{{ value_json.tid }}",
+            "senast": sensor("senast", "Last measurement", "{{ value_json.tid }}",
                              dev_cla="timestamp"),
-            "noll": sensor("noll", "Nollnivå", "{{ value_json.noll_mm }}",
+            "noll": sensor("noll", "Zero level", "{{ value_json.noll_mm }}",
                            dev_cla="distance", unit_of_meas="mm", sug_dsp_prc=1,
                            ent_cat="diagnostic"),
-            "lock": sensor("lock", "Lockets temperatur", "{{ value_json.lock_C }}",
+            "lock": sensor("lock", "Lid temperature", "{{ value_json.lock_C }}",
                            dev_cla="temperature", unit_of_meas="°C",
                            stat_cla="measurement", sug_dsp_prc=2,
                            ent_cat="diagnostic"),
-            "kamera": sensor("kamera", "Kamerans temperatur", "{{ value_json.sensor_C }}",
+            "kamera": sensor("kamera", "Camera temperature", "{{ value_json.sensor_C }}",
                              dev_cla="temperature", unit_of_meas="°C",
                              stat_cla="measurement", ent_cat="diagnostic"),
-            "dpt": sensor("dpt", "Linsläge", "{{ value_json.dpt }}",
+            "dpt": sensor("dpt", "Lens position", "{{ value_json.dpt }}",
                           unit_of_meas="dpt", stat_cla="measurement",
                           sug_dsp_prc=3, ent_cat="diagnostic"),
-            "exp": sensor("exp", "Exponering", "{{ value_json.exp_us }}",
+            "exp": sensor("exp", "Exposure", "{{ value_json.exp_us }}",
                           unit_of_meas="µs", ent_cat="diagnostic"),
             "halsen": {"p": "binary_sensor", "unique_id": f"{i}_halsen",
-                       "name": "I halsen", "dev_cla": "problem",
+                       "name": "In the neck", "dev_cla": "problem",
                        "stat_t": self.t_state,
                        "val_tpl": "{{ 'ON' if value_json.i_halsen else 'OFF' }}",
                        "exp_aft": exp},
             "nolla": {"p": "button", "unique_id": f"{i}_nolla",
-                      "name": "Nollställ vid fyllning",
+                      "name": "Set zero at fill level",
                       "cmd_t": f"{self.t_cmd}/zero", "pl_prs": "PRESS",
                       "ent_cat": "config", "ret": False},
         }

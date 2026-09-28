@@ -26,11 +26,13 @@ WorkingDirectory=/home/pi/krausencamera
 # --max-frame-duration-us 33333: the live view must hold 30 fps as the
 #   calibration did. A slower frame cools the sensor and moves the reading.
 # --lid-sensor: the DS18B20 on the TC ferrule (hardware/ds18b20-sensors.md).
+# --mqtt-config: broker and credentials, on the Pi only (mqtt.example.json).
 ExecStart=/usr/bin/python3 /home/pi/krausencamera/liveview.py \
     --pdaf-model /home/pi/krausencamera/af-model.csv \
     --measure-interval 300 \
     --max-frame-duration-us 33333 \
     --lid-sensor 28-ef39cb356461 \
+    --mqtt-config /home/pi/krausencamera/mqtt.json \
     --snapshot-dir /home/pi/frames \
     --snapshot-interval 300 \
     --snapshot-exposure-us 15000 \
