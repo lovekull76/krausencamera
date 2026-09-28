@@ -352,8 +352,19 @@ async function frameSource() {
     let dir;
     try { dir = await showDirectoryPicker({ id: "krausen-batch", mode: "read" }); }
     catch (e) { return null; }
-    try { bilderDir = await dir.getDirectoryHandle("bilder"); }
+    let b;
+    try { b = await dir.getDirectoryHandle("bilder"); }
     catch (e) { alert("That folder has no bilder/ in it. Choose the batch folder itself (" + D.name + ")."); return null; }
+    // The dialog opens where it was last used -- often the previous batch --
+    // so check the folder really holds this page's frames, first and last,
+    // before recording a film of the wrong fermentation.
+    try {
+      for (const f of [F[0], F[F.length - 1]]) await b.getFileHandle(f[0].split("/").pop());
+    } catch (e) {
+      alert("That folder is not batch " + D.name + " -- its frames are not there. Choose " + D.name + ".");
+      return null;
+    }
+    bilderDir = b;
   }
   return async i => {
     const name = F[i][0].split("/").pop();
