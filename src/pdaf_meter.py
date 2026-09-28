@@ -414,8 +414,12 @@ class PdafMeter:
                          r["status"], r["dpt"], r["d_mm"],
                          f", krausen {r['krausen_mm']} mm" if r["krausen_mm"] is not None else "",
                          r["n_ok"], r["n"], r["sensor_C"], r["lock_C"], r["exp_us"])
+                # 0.9: frame A rides on the measurement cycle, and with both at
+                # 300 s a strict comparison lost every other frame to a few
+                # milliseconds of jitter -- 152 frames on 2026-09-28 where the
+                # clock allowed 250.
                 if (self._snap_dir or self.batches) and \
-                        time.monotonic() - self._last_snap >= self._snap_interval:
+                        time.monotonic() - self._last_snap >= 0.9 * self._snap_interval:
                     self._last_snap = time.monotonic()
                     try:
                         self._snapshot(r["dpt"])

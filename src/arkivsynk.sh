@@ -33,6 +33,17 @@ opts=(-rt --no-perms --no-owner --no-group --partial --timeout=60)
 [ -d "$SRC" ] && rsync "${opts[@]}" "$SRC/" "$DEST/"
 [ -d "$LOGS" ] && rsync "${opts[@]}" "$LOGS/" "$DEST/matningar/"
 
+# A timelapse page in every folder on the NAS that has frames newer than its
+# page. Built against the NAS copy, so it lists frames already pruned here.
+while IFS= read -r -d '' bilder; do
+  d=$(dirname "$bilder")
+  page="$d/timelapse.html"
+  if [ ! -f "$page" ] || [ -n "$(find "$bilder" -newer "$page" -name 'A-*.jpg' -print -quit)" ] \
+     || [ "$d/matningar.csv" -nt "$page" ]; then
+    python3 /home/pi/krausencamera/timelapse.py "$d" && echo "timelapse: $d"
+  fi
+done < <(find "$DEST" -maxdepth 3 -type d -name bilder -print0)
+
 # Prune the local copy. Today's files are still being appended to, and a file
 # is only removed once the NAS has one of the same size.
 if [ -d "$SRC" ]; then
