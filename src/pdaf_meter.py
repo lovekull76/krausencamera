@@ -145,6 +145,8 @@ class PdafMeter:
 
         self.zero = self._load_zero()
         self.last: dict | None = None
+        # Called with (reading, zero_mm) after every point and every new zero.
+        self.listeners: list = []
         self.busy = False
         self.last_ok = time.time()
         self._fails = 0
@@ -215,9 +217,18 @@ class PdafMeter:
         with open(self._zero_path, "w") as f:
             json.dump(z, f)
         self.zero = z
+        self.last["krausen_mm"] = 0.0
         log.info("zero set: %.2f mm (%.4f dpt) from the reading at %s",
                  z["d_mm"], z["dpt"], z["tid"])
+        self._notify()
         return z
+
+    def _notify(self) -> None:
+        for f in self.listeners:
+            try:
+                f(self.last, None if not self.zero else self.zero["d_mm"])
+            except Exception:
+                log.exception("listener failed")
 
     # -- viewers -----------------------------------------------------------
 
@@ -370,6 +381,7 @@ class PdafMeter:
                 r = self.measure()
                 self.last = r
                 self._write(r)
+                self._notify()
                 self._fails = 0
                 self.last_ok = time.time()
                 log.info("%s  %s dpt  -> %s mm%s  (%d/%d, sensor %s C, lid %s C, %s us)",

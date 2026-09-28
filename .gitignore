@@ -27,3 +27,6 @@ LOCAL.md
 
 # Scratch -- aldrig i det publika repot
 tmp/
+
+# MQTT credentials, on the Pi only
+mqtt.json

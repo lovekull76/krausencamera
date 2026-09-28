@@ -642,6 +642,10 @@ def main() -> int:
                    help="PDAF meter: hold the IR lamp on, or light it only to "
                         "measure and for viewers. Switchable at runtime with "
                         "POST /api/lampmode?on=0|1")
+    p.add_argument("--mqtt-config", metavar="FILE",
+                   help="publish to Home Assistant over MQTT; JSON with host, "
+                        "port, username, password (mqtt.example.json). "
+                        "Keep it out of the repository.")
     p.add_argument("--snapshot-quality", type=int, default=95,
                    help="JPEG quality of frame A")
     p.add_argument("--settle-min", type=float, default=75.0,
@@ -693,6 +697,7 @@ def main() -> int:
         return 2
 
     tracker = None
+    ha = None
     if args.pdaf_model:
         from pdaf_meter import PdafMeter
         tracker = PdafMeter(
@@ -707,6 +712,15 @@ def main() -> int:
             snapshot_quality=args.snapshot_quality,
             viewers=lambda: Handler._viewers)
         Handler.tracker = tracker
+        if args.mqtt_config:
+            import json as _json
+            from ha_mqtt import HaMqtt
+            with open(args.mqtt_config) as f:
+                mqtt_cfg = _json.load(f)
+            ha = HaMqtt(mqtt_cfg, on_zero=tracker.set_zero,
+                        interval_s=args.measure_interval)
+            tracker.listeners.append(ha.publish)
+            ha.start()
         tracker.start()
     elif args.autofocus or (args.no_laser and args.snapshot_dir):
         tracker = FocusTracker(
@@ -758,6 +772,12 @@ def main() -> int:
         log.info("watchdog: exit if no cycle completes within %.0f s", period)
 
     httpd = Server(("", args.port), Handler)
+    # systemd stops us with SIGTERM, which by default kills the process
+    # without running the finally below -- so MQTT would never say offline and
+    # HA would wait for the broker's keepalive instead. Turn it into a shutdown.
+    import signal
+    signal.signal(signal.SIGTERM,
+                  lambda *_: threading.Thread(target=httpd.shutdown, daemon=True).start())
     log.info("live view on http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",
              args.port, *MAIN_SIZE, *lores_size(args))
     try:
@@ -766,6 +786,8 @@ def main() -> int:
         log.info("shutting down")
     finally:
         httpd.shutdown()
+        if ha:
+            ha.stop()
         if tracker:
             tracker.stop()
         picam2.stop_recording()
