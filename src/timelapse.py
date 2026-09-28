@@ -119,6 +119,8 @@ PAGE = r"""<!doctype html>
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   input[type=range] { flex: 1; min-width: 160px; accent-color: var(--accent); }
   .pos { color: var(--dim); font-variant-numeric: tabular-nums; min-width: 9ch; text-align:right; }
+  #dl { color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
   canvas { width: 100%; height: 170px; display:block; background: var(--panel);
            border-radius: 4px; cursor: crosshair; }
   .help { color: var(--dim); font-size: 12px; }
@@ -143,9 +145,15 @@ PAGE = r"""<!doctype html>
     </select>
     <input type="range" id="slider" min="0" value="0" aria-label="Frame">
     <span class="pos" id="pos"></span>
+    <button id="export">Export film</button>
+  </div>
+  <div class="bar" id="exportbar" hidden>
+    <span id="exportmsg"></span>
+    <button id="cancel">Cancel</button>
+    <a id="dl" hidden></a>
   </div>
   <canvas id="chart" aria-label="Krausen height over the batch"></canvas>
-  <div class="help">Space plays and pauses &middot; &larr; &rarr; step one frame &middot; click or drag in the curve to jump &middot; dashed lines are zeros</div>
+  <div class="help">Export film records every frame at the chosen speed, with the time, the height and the curve burned in, at the frames' own resolution. It plays through in real time, so keep this tab visible while it runs. &middot; Space plays and pauses &middot; &larr; &rarr; step one frame &middot; click or drag in the curve to jump &middot; dashed lines are zeros</div>
 </main>
 <script>
 const D = /*DATA*/null;
@@ -186,6 +194,14 @@ function load(i) {
   const im = new Image(); im.src = F[i][0]; cache.set(i, im);
   if (cache.size > 80) for (const k of cache.keys()) { if (Math.abs(k - i) > 40) cache.delete(k); if (cache.size <= 60) break; }
 }
+function caption(i) {
+  const t = F[i][1], m = nearestMeas(t);
+  const out = { t: fmtTime(t) + " \u00b7 " + fmtElapsed(t - t0) };
+  if (!m) return { ...out, k: "\u2014", s: "no measurement near this frame" };
+  const v = val(m);
+  return { ...out, k: v === null ? "\u2014" : (hasK ? "krausen " : "surface ") + v.toFixed(1) + " mm",
+           s: words[m[3]] ?? m[3] };
+}
 let idx = 0;
 function show(i) {
   if (!F.length) return;
@@ -194,14 +210,8 @@ function show(i) {
   for (let k = 1; k <= 24; k++) load(idx + k);
   $("slider").value = idx;
   $("pos").textContent = (idx + 1) + " / " + F.length;
-  const t = F[idx][1], m = nearestMeas(t);
-  $("ct").textContent = fmtTime(t) + " \u00b7 " + fmtElapsed(t - t0);
-  if (!m) { $("ck").textContent = "—"; $("cs").textContent = "no measurement near this frame"; }
-  else {
-    const v = val(m);
-    $("ck").textContent = v === null ? "—" : (hasK ? "krausen " : "surface ") + v.toFixed(1) + " mm";
-    $("cs").textContent = words[m[3]] ?? m[3];
-  }
+  const c = caption(idx);
+  $("ck").textContent = c.k; $("ct").textContent = c.t; $("cs").textContent = c.s;
   draw();
 }
 
@@ -231,58 +241,65 @@ addEventListener("keydown", e => {
 });
 
 // -- the curve --------------------------------------------------------------
+// One drawing routine for the page and for the exported film, so what is burned
+// into the film is exactly what the page shows. `s` scales text and lines.
 const cv = $("chart"), cx = cv.getContext("2d");
 const pts = M.filter(m => val(m) !== null);
-function draw() {
-  const r = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
-  cv.width = W * r; cv.height = H * r; cx.setTransform(r, 0, 0, r, 0, 0);
-  const cs = getComputedStyle(document.documentElement);
-  const c = n => cs.getPropertyValue(n).trim();
-  cx.clearRect(0, 0, W, H);
-  const L = 44, R = 10, T = 10, B = 22, w = W - L - R, h = H - T - B;
-  if (!pts.length) { cx.fillStyle = c("--dim"); cx.fillText("No heights recorded in this batch yet.", L, T + 20); return; }
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function chart(g, W, H, s, cursorT, fill) {
+  if (fill) { g.fillStyle = css("--panel"); g.fillRect(0, 0, W, H); } else g.clearRect(0, 0, W, H);
+  const L = 44 * s, R = 10 * s, T = 10 * s, B = 22 * s, w = W - L - R, h = H - T - B;
+  g.font = `${11 * s}px -apple-system, "Segoe UI", sans-serif`; g.lineWidth = s;
+  if (!pts.length) { g.fillStyle = css("--dim"); g.fillText("No heights recorded in this batch yet.", L, T + 20 * s); return null; }
   let lo = Math.min(...pts.map(val)), hi = Math.max(...pts.map(val));
   if (hi - lo < 5) { const m = (hi + lo) / 2; lo = m - 2.5; hi = m + 2.5; }
   const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
   const ta = Math.min(t0, pts[0][0]), tb = Math.max(t1, pts[pts.length - 1][0]);
   const X = t => L + (t - ta) / Math.max(1, tb - ta) * w;
   const Y = v => hasK ? T + (hi - v) / (hi - lo) * h : T + (v - lo) / (hi - lo) * h;
-  cx.font = "11px -apple-system, sans-serif"; cx.lineWidth = 1;
-  // grid and y labels
-  cx.strokeStyle = c("--line"); cx.fillStyle = c("--dim"); cx.textAlign = "right"; cx.textBaseline = "middle";
-  const step = [1,2,5,10,20,50,100].find(s => (hi - lo) / s <= 6) || 200;
+  g.strokeStyle = css("--line"); g.fillStyle = css("--dim"); g.textAlign = "right"; g.textBaseline = "middle";
+  const step = [1,2,5,10,20,50,100].find(k => (hi - lo) / k <= 6) || 200;
   for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
-    cx.beginPath(); cx.moveTo(L, Y(v)); cx.lineTo(W - R, Y(v)); cx.stroke();
-    cx.fillText(v + (hasK ? "" : ""), L - 6, Y(v));
+    g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(W - R, Y(v)); g.stroke();
+    g.fillText(String(v), L - 6 * s, Y(v));
   }
-  cx.textAlign = "left"; cx.fillText(hasK ? "krausen, mm" : "surface, mm", L + 4, T + 6);
+  g.textAlign = "left"; g.fillText(hasK ? "krausen, mm" : "surface, mm", L + 4 * s, T + 6 * s);
   // time ticks: days over a long batch, hours over a short one
-  cx.textAlign = "center"; cx.textBaseline = "top";
+  g.textAlign = "center"; g.textBaseline = "top";
   const span = tb - ta;
   const tick = span > 2 * 86400 ? 86400 : span > 12 * 3600 ? 6 * 3600 : span > 3 * 3600 ? 3600 : 1800;
   for (let k = 0; ta + k * tick <= tb; k++) {
-    const s = k * tick, x = X(ta + s);
-    cx.beginPath(); cx.moveTo(x, T); cx.lineTo(x, T + h); cx.stroke();
-    const d = Math.floor(s / 86400), hh = Math.floor(s % 86400 / 3600), mm = Math.floor(s % 3600 / 60);
-    cx.fillText(tick >= 86400 ? "+" + d + " d" : "+" + (d * 24 + hh) + (mm ? ":" + String(mm).padStart(2, "0") : "") + " h", x, T + h + 4);
+    const e = k * tick, x = X(ta + e);
+    g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + h); g.stroke();
+    const d = Math.floor(e / 86400), hh = Math.floor(e % 86400 / 3600), mm = Math.floor(e % 3600 / 60);
+    g.fillText(tick >= 86400 ? "+" + d + " d" : "+" + (d * 24 + hh) + (mm ? ":" + String(mm).padStart(2, "0") : "") + " h", x, T + h + 4 * s);
   }
   // zeros
-  cx.strokeStyle = c("--zero"); cx.setLineDash([4, 4]);
-  for (const z of D.zeros) { const x = X(z[0]); cx.beginPath(); cx.moveTo(x, T); cx.lineTo(x, T + h); cx.stroke(); }
-  cx.setLineDash([]);
+  g.strokeStyle = css("--zero"); g.setLineDash([4 * s, 4 * s]);
+  for (const z of D.zeros) { const x = X(z[0]); g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + h); g.stroke(); }
+  g.setLineDash([]);
   // the curve, broken where there is a gap of more than half an hour
-  cx.strokeStyle = c("--accent"); cx.lineWidth = 1.6; cx.beginPath();
+  g.strokeStyle = css("--accent"); g.lineWidth = 1.6 * s; g.beginPath();
   pts.forEach((p, i) => {
     const gap = i && p[0] - pts[i - 1][0] > 1800;
-    (i === 0 || gap) ? cx.moveTo(X(p[0]), Y(val(p))) : cx.lineTo(X(p[0]), Y(val(p)));
+    (i === 0 || gap) ? g.moveTo(X(p[0]), Y(val(p))) : g.lineTo(X(p[0]), Y(val(p)));
   });
-  cx.stroke();
-  // the cursor
-  if (F.length) {
-    const x = X(F[idx][1]);
-    cx.strokeStyle = c("--ink"); cx.lineWidth = 1; cx.beginPath(); cx.moveTo(x, T); cx.lineTo(x, T + h); cx.stroke();
+  g.stroke();
+  // the cursor, with a dot where it meets the curve
+  if (cursorT !== null) {
+    const x = X(cursorT);
+    g.strokeStyle = css("--ink"); g.lineWidth = s; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + h); g.stroke();
+    const m = nearestMeas(cursorT);
+    if (m && val(m) !== null) {
+      g.fillStyle = css("--accent"); g.beginPath(); g.arc(x, Y(val(m)), 3.5 * s, 0, 2 * Math.PI); g.fill();
+    }
   }
-  cv._X = { L, w, ta, tb };
+  return { L, w, ta, tb };
+}
+function draw() {
+  const r = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * r; cv.height = H * r; cx.setTransform(r, 0, 0, r, 0, 0);
+  cv._X = chart(cx, W, H, 1, F.length ? F[idx][1] : null, false);
 }
 function seek(e) {
   const g = cv._X; if (!g || !F.length) return;
@@ -296,6 +313,80 @@ cv.onmousedown = e => { dragging = true; seek(e); };
 addEventListener("mousemove", e => { if (dragging) seek(e); });
 addEventListener("mouseup", () => dragging = false);
 addEventListener("resize", draw);
+
+// -- export -----------------------------------------------------------------
+// Draw each frame, its caption and the curve onto one canvas and record that.
+// MediaRecorder runs in real time, so frames are paced at the chosen rate; the
+// recorder is paused while a frame is still loading from the NAS, so a slow
+// read stretches the recording, not the film.
+function loadImg(i) {
+  load(i);
+  const im = cache.get(i);
+  return im.complete && im.naturalWidth ? Promise.resolve(im)
+    : new Promise((ok, bad) => { im.onload = () => ok(im); im.onerror = bad; });
+}
+function burnCaption(g, i, s) {
+  const c = caption(i), big = `600 ${26 * s}px -apple-system, "Segoe UI", sans-serif`,
+        mid = `${13 * s}px -apple-system, "Segoe UI", sans-serif`, small = `${12 * s}px -apple-system, "Segoe UI", sans-serif`;
+  g.font = big; let bw = g.measureText(c.k).width;
+  g.font = mid; bw = Math.max(bw, g.measureText(c.t).width);
+  g.font = small; bw = Math.max(bw, g.measureText(c.s).width);
+  g.fillStyle = "rgba(0,0,0,.55)"; g.fillRect(10 * s, 10 * s, bw + 20 * s, 72 * s);
+  g.textAlign = "left"; g.textBaseline = "top";
+  g.fillStyle = css("--accent"); g.font = big; g.fillText(c.k, 20 * s, 15 * s);
+  g.fillStyle = css("--ink"); g.font = mid; g.fillText(c.t, 20 * s, 46 * s);
+  g.fillStyle = css("--dim"); g.font = small; g.fillText(c.s, 20 * s, 63 * s);
+}
+let cancelled = false;
+$("cancel").onclick = () => { cancelled = true; };
+$("export").onclick = async () => {
+  if (!F.length) return;
+  play(false);
+  const fps = +$("speed").value;
+  const mime = ["video/mp4;codecs=avc1.640033", "video/mp4", "video/webm;codecs=vp9", "video/webm"]
+    .find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+  if (!mime) { alert("This browser cannot record video. Try Chrome or Safari."); return; }
+  const first = await loadImg(0);
+  const IW = first.naturalWidth, IH = first.naturalHeight;
+  const s = IW / 1200, CH = Math.round(IH * 0.26 / 2) * 2;
+  const film = document.createElement("canvas");
+  film.width = IW; film.height = IH + CH;
+  const g = film.getContext("2d");
+  const track = film.captureStream(0).getVideoTracks()[0];
+  const rec = new MediaRecorder(new MediaStream([track]), { mimeType: mime, videoBitsPerSecond: 16e6 });
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  const stopped = new Promise(r => rec.onstop = r);
+  cancelled = false;
+  $("export").disabled = true; $("exportbar").hidden = false; $("dl").hidden = true; $("cancel").hidden = false;
+  rec.start(1000);
+  let due = performance.now();
+  for (let i = 0; i < F.length && !cancelled; i++) {
+    let im = cache.get(i);
+    if (!(im && im.complete && im.naturalWidth)) {
+      rec.pause(); im = await loadImg(i); rec.resume(); due = performance.now();
+    }
+    for (let k = 1; k <= 24; k++) load(i + k);
+    g.drawImage(im, 0, 0, IW, IH);
+    burnCaption(g, i, s);
+    g.save(); g.translate(0, IH); chart(g, IW, CH, s, F[i][1], true); g.restore();
+    track.requestFrame();
+    $("exportmsg").textContent = `Recording frame ${i + 1} of ${F.length} at ${fps} fps — keep this tab visible`;
+    due += 1000 / fps;
+    await new Promise(r => setTimeout(r, Math.max(0, due - performance.now())));
+  }
+  rec.stop(); await stopped;
+  $("export").disabled = false; $("cancel").hidden = true;
+  if (cancelled) { $("exportmsg").textContent = "Export cancelled."; return; }
+  const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  const a = $("dl");
+  a.href = URL.createObjectURL(new Blob(chunks, { type: mime.split(";")[0] }));
+  a.download = `krausen-${D.name}-${fps}fps.${ext}`;
+  a.textContent = `Save ${a.download} (${(chunks.reduce((n, b) => n + b.size, 0) / 1e6).toFixed(0)} MB)`;
+  a.hidden = false;
+  $("exportmsg").textContent = `${IW}×${IH + CH}, ${F.length} frames, ${(F.length / fps).toFixed(1)} s.`;
+  a.click();
+};
 show(0);
 </script>
 </body>
