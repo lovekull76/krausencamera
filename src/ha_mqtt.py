@@ -4,6 +4,7 @@
     krausencamera/<id>/status   online | offline     retained, the LWT
     krausencamera/<id>/state    one JSON per point   NOT retained
     krausencamera/<id>/cmd/zero PRESS                never retained
+    krausencamera/<id>/cmd/batch PRESS               never retained
     homeassistant/device/<id>/config                 retained, device discovery
 
 **One availability for the whole device.** Device discovery puts every entity
@@ -52,7 +53,7 @@ STATUSES = list(STATUS_EN.values())
 
 class HaMqtt:
     def __init__(self, cfg: dict, *, device_id: str | None = None,
-                 on_zero=None, interval_s: float = 300.0) -> None:
+                 on_zero=None, on_batch=None, interval_s: float = 300.0) -> None:
         import paho.mqtt.client as mqtt
 
         self.id = device_id or cfg.get("device_id") or socket.gethostname()
@@ -68,6 +69,7 @@ class HaMqtt:
         # three missed points before HA calls a value stale
         self._expire = int(cfg.get("expire_after", 3 * interval_s))
         self._on_zero = on_zero
+        self._on_batch = on_batch
         self._last: str | None = None
         self._lock = threading.Lock()
 
@@ -131,6 +133,10 @@ class HaMqtt:
             log.info("mqtt: zero requested")
             if self._on_zero:
                 self._on_zero()
+        elif msg.topic == f"{self.t_cmd}/batch":
+            log.info("mqtt: new batch requested")
+            if self._on_batch:
+                self._on_batch()
 
     # -- publishing --------------------------------------------------------
 
@@ -140,7 +146,7 @@ class HaMqtt:
         if last is not None:
             self._c.publish(self.t_state, last, qos=1, retain=False)
 
-    def publish(self, r: dict, zero_mm: float | None) -> None:
+    def publish(self, r: dict, zero_mm: float | None, batch: str | None = None) -> None:
         """One measurement from PdafMeter, as the state JSON."""
         ok = r.get("status") == "ok"
         tid = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(r["t"]))
@@ -152,6 +158,7 @@ class HaMqtt:
             "i_halsen": r.get("status") == "i_halsen",
             "tid": f"{tid}{tz[:3]}:{tz[3:]}",
             "noll_mm": zero_mm,
+            "batch": batch,
             "dpt": r.get("dpt"),
             "lock_C": r.get("lock_C"),
             "sensor_C": r.get("sensor_C"),
@@ -201,6 +208,12 @@ class HaMqtt:
                        "stat_t": self.t_state,
                        "val_tpl": "{{ 'ON' if value_json.i_halsen else 'OFF' }}",
                        "exp_aft": exp},
+            "batch": sensor("batch", "Batch", "{{ value_json.batch }}",
+                            icon="mdi:beer"),
+            "nybatch": {"p": "button", "unique_id": f"{i}_nybatch",
+                        "name": "Start new batch",
+                        "cmd_t": f"{self.t_cmd}/batch", "pl_prs": "PRESS",
+                        "ent_cat": "config", "ret": False},
             "nolla": {"p": "button", "unique_id": f"{i}_nolla",
                       "name": "Set zero at fill level",
                       "cmd_t": f"{self.t_cmd}/zero", "pl_prs": "PRESS",

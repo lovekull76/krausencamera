@@ -84,6 +84,7 @@ PAGE = """<!DOCTYPE html>
     <span id="exp" class="focus"></span>
   </div>
   <div class="row hw" id="zerorow" hidden>
+    <button id="batch">Start new batch</button>
     <button id="zero">Set zero at fill level</button>
     <span id="zeroinfo" class="focus"></span>
   </div>
@@ -142,8 +143,9 @@ PAGE = """<!DOCTYPE html>
         : words[f.status] + "surface " + f.d_mm.toFixed(1) + " mm"
           + (f.krausen_mm !== null ? " \u00b7 krausen " + f.krausen_mm.toFixed(1) + " mm" : "")
           + " \u00b7 " + f.dpt.toFixed(3) + " dpt \u00b7 " + f.age_s + " s ago";
-      document.getElementById("zeroinfo").textContent = f.zero_mm === null
-        ? "no zero set" : "zero at " + f.zero_mm.toFixed(1) + " mm";
+      document.getElementById("zeroinfo").textContent =
+        (f.batch ? "batch " + f.batch : "no batch") + " \u00b7 "
+        + (f.zero_mm === null ? "no zero set" : "zero at " + f.zero_mm.toFixed(1) + " mm");
     } else if (st.focus) {
       const f = st.focus;
       // "busy" is why the picture just went black: the lamp is off and the
@@ -160,6 +162,13 @@ PAGE = """<!DOCTYPE html>
   }
   led.onclick = () => toggle("/api/led", led.textContent !== "IR on");
   laser.onclick = () => toggle("/api/laser", laser.textContent !== "LASER ON");
+  document.getElementById("batch").onclick = async () => {
+    if (!confirm("Start a new batch? Frames and logs go to a new folder, "
+                 + "and the zero is cleared until the tank is zeroed again.")) return;
+    const r = await fetch("/api/batch", { method: "POST" });
+    if (!r.ok) { alert("No archive configured on the service."); return; }
+    paint(await r.json());
+  };
   document.getElementById("zero").onclick = async () => {
     if (!confirm("Store the latest surface distance as the fill-level zero? "
                  + "Every krausen height is measured from it.")) return;
@@ -327,6 +336,11 @@ class Handler(server.BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             self.tracker.set_lamp_mode(on)
+        elif parsed.path == "/api/batch":
+            if self.tracker is None or not hasattr(self.tracker, "new_batch") \
+                    or self.tracker.new_batch() is None:
+                self.send_error(409, "no archive configured")
+                return
         elif parsed.path == "/api/zero":
             if self.tracker is None or not hasattr(self.tracker, "set_zero") \
                     or self.tracker.set_zero() is None:
@@ -646,6 +660,9 @@ def main() -> int:
                    help="publish to Home Assistant over MQTT; JSON with host, "
                         "port, username, password (mqtt.example.json). "
                         "Keep it out of the repository.")
+    p.add_argument("--archive-dir", default=None,
+                   help="batch folders for frame A and per-batch logs, synced "
+                        "to the NAS by arkivsynk.sh. Overrides --snapshot-dir.")
     p.add_argument("--snapshot-quality", type=int, default=95,
                    help="JPEG quality of frame A")
     p.add_argument("--settle-min", type=float, default=75.0,
@@ -700,6 +717,11 @@ def main() -> int:
     ha = None
     if args.pdaf_model:
         from pdaf_meter import PdafMeter
+        batches = None
+        if args.archive_dir:
+            from batch import Batches
+            batches = Batches(args.archive_dir,
+                              os.path.join(os.path.dirname(args.zero_file), "batch.json"))
         tracker = PdafMeter(
             picam2, lamp, model_path=args.pdaf_model,
             interval_s=args.measure_interval, restore_controls=restore,
@@ -709,7 +731,7 @@ def main() -> int:
             zero_path=args.zero_file, log_dir=args.log_dir,
             lid_sensor=args.lid_sensor, settle_min=args.settle_min,
             lamp_always_on=args.lamp_mode == "always",
-            snapshot_quality=args.snapshot_quality,
+            snapshot_quality=args.snapshot_quality, batches=batches,
             viewers=lambda: Handler._viewers)
         Handler.tracker = tracker
         if args.mqtt_config:
@@ -718,6 +740,7 @@ def main() -> int:
             with open(args.mqtt_config) as f:
                 mqtt_cfg = _json.load(f)
             ha = HaMqtt(mqtt_cfg, on_zero=tracker.set_zero,
+                        on_batch=tracker.new_batch,
                         interval_s=args.measure_interval)
             tracker.listeners.append(ha.publish)
             ha.start()

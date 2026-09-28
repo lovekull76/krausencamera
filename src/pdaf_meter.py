@@ -113,7 +113,7 @@ class PdafMeter:
                  snapshot_interval_s=300.0, snapshot_exposure_us=15000,
                  zero_path="zero.json", log_dir="matningar",
                  lid_sensor=None, settle_min=75.0, lamp_always_on=True,
-                 snapshot_quality=95, viewers=lambda: 0) -> None:
+                 snapshot_quality=95, batches=None, viewers=lambda: 0) -> None:
         from libcamera import controls
         import af_calibrate as afc
 
@@ -134,6 +134,9 @@ class PdafMeter:
         self._lid_sensor = lid_sensor
         self._settle_s = settle_min * 60.0
         self._viewers = viewers
+        # Batch folders for frames and per-batch logs; without them frame A
+        # goes to snapshot_dir as before.
+        self.batches = batches
         self._t_start = time.time()
         self._cam = threading.Lock()
         # The calibration's own settings, and nothing else -- see the module
@@ -218,15 +221,34 @@ class PdafMeter:
             json.dump(z, f)
         self.zero = z
         self.last["krausen_mm"] = 0.0
+        if self.batches:
+            self.batches.log_zero(z)
         log.info("zero set: %.2f mm (%.4f dpt) from the reading at %s",
                  z["d_mm"], z["dpt"], z["tid"])
         self._notify()
         return z
 
+    def new_batch(self) -> dict | None:
+        """Open a new batch and clear the zero -- it belongs to the old fill."""
+        if not self.batches:
+            return None
+        b = self.batches.new()
+        self.zero = None
+        try:
+            os.remove(self._zero_path)
+        except OSError:
+            pass
+        if self.last:
+            self.last["krausen_mm"] = None
+        log.info("batch %s opened; zero cleared until the tank is zeroed", b["id"])
+        self._notify()
+        return b
+
     def _notify(self) -> None:
         for f in self.listeners:
             try:
-                f(self.last, None if not self.zero else self.zero["d_mm"])
+                f(self.last, None if not self.zero else self.zero["d_mm"],
+                  self.batches.id if self.batches else None)
             except Exception:
                 log.exception("listener failed")
 
@@ -250,6 +272,7 @@ class PdafMeter:
     def state(self) -> dict:
         s = dict(self.last or {})
         s["busy"] = self.busy
+        s["batch"] = self.batches.id if self.batches else None
         s["lamp_always_on"] = self.lamp_always_on
         s["age_s"] = None if not self.last else round(time.time() - self.last["t"])
         s["zero_mm"] = None if not self.zero else self.zero["d_mm"]
@@ -366,7 +389,8 @@ class PdafMeter:
                 if self._viewers() == 0:
                     self._park()
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        path = os.path.join(self._snap_dir, f"A-{stamp}.jpg")
+        folder = self.batches.dir("bilder") if self.batches else self._snap_dir
+        path = os.path.join(folder, f"A-{stamp}.jpg")
         Image.fromarray(a[:, :, :3][:, :, ::-1]).save(path, quality=self._snap_quality)
         log.info("frame A -> %s (%.0f mean, focus %s)", os.path.basename(path),
                  a[:, :, :3].mean(), f"{dpt:.2f} dpt" if dpt else "parked")
@@ -381,6 +405,8 @@ class PdafMeter:
                 r = self.measure()
                 self.last = r
                 self._write(r)
+                if self.batches:
+                    self.batches.log_measurement(r, self.zero["d_mm"] if self.zero else None)
                 self._notify()
                 self._fails = 0
                 self.last_ok = time.time()
@@ -388,7 +414,8 @@ class PdafMeter:
                          r["status"], r["dpt"], r["d_mm"],
                          f", krausen {r['krausen_mm']} mm" if r["krausen_mm"] is not None else "",
                          r["n_ok"], r["n"], r["sensor_C"], r["lock_C"], r["exp_us"])
-                if self._snap_dir and time.monotonic() - self._last_snap >= self._snap_interval:
+                if (self._snap_dir or self.batches) and \
+                        time.monotonic() - self._last_snap >= self._snap_interval:
                     self._last_snap = time.monotonic()
                     try:
                         self._snapshot(r["dpt"])
