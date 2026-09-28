@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Record the live stream to an MP4, for a dry hop. Start, stop, a time cap.
+"""Record the live stream to an MP4. Start, stop, a time cap.
+
+Written for dry hops, but named for what it is -- `live_recording_<time>.mp4`
+-- since anything worth watching in the tank can be filmed the same way.
 
 The lores stream already feeds the live view through the MJPEG encoder. A
 second encoder -- hardware H.264 -- is attached to the same stream for the
@@ -75,7 +78,7 @@ class Recorder:
             self._lamp.acquire()
             folder = self._video_dir()
             os.makedirs(folder, exist_ok=True)
-            self.path = os.path.join(folder, time.strftime("DH-%Y%m%d-%H%M%S.mp4"))
+            self.path = os.path.join(folder, time.strftime("live_recording_%Y%m%d-%H%M%S.mp4"))
             enc = H264Encoder(bitrate=self._bitrate)
             try:
                 self._picam2.start_encoder(enc, PyavOutput(self.path, format="mp4"), name="lores")
