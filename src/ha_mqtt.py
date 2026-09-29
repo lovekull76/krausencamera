@@ -174,7 +174,9 @@ class HaMqtt:
         if v != self._stalled:
             log.warning("mqtt: measurement stalled -> %s", v)
         self._stalled = v
-        self._c.publish(self.t_stall, v, qos=1, retain=False)(self, st: dict) -> None:
+        self._c.publish(self.t_stall, v, qos=1, retain=False)
+
+    def publish_recording(self, st: dict) -> None:
         """The recording switch's state, the moment it changes -- not on the
         five-minute measurement clock."""
         self._recording = "ON" if st.get("recording") else "OFF"
