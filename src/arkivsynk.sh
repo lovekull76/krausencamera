@@ -44,6 +44,9 @@ while IFS= read -r -d '' bilder; do
   fi
 done < <(find "$DEST" -maxdepth 3 -type d -name bilder -print0)
 
+# The start page at the root of the share, for the NAS's web server.
+python3 /home/pi/krausencamera/arkivindex.py "$NAS" || echo "startsidan kunde inte skrivas"
+
 # Prune the local copy. Today's files are still being appended to, and a file
 # is only removed once the NAS has one of the same size.
 if [ -d "$SRC" ]; then

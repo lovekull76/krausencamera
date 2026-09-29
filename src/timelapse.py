@@ -122,7 +122,7 @@ PAGE = r"""<!doctype html>
   #dl { color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
   canvas { width: 100%; height: 170px; display:block; background: var(--panel);
-           border-radius: 4px; cursor: crosshair; }
+           border-radius: 4px; cursor: crosshair; touch-action: none; }
   .help { color: var(--dim); font-size: 12px; }
   .empty { padding: 40px; text-align:center; color: var(--dim); }
 </style>
@@ -308,10 +308,11 @@ function seek(e) {
   let best = 0; F.forEach((f, i) => { if (Math.abs(f[1] - t) < Math.abs(F[best][1] - t)) best = i; });
   play(false); show(best);
 }
+// Pointer events, so a finger on a phone scrubs the curve as a mouse does.
 let dragging = false;
-cv.onmousedown = e => { dragging = true; seek(e); };
-addEventListener("mousemove", e => { if (dragging) seek(e); });
-addEventListener("mouseup", () => dragging = false);
+cv.onpointerdown = e => { dragging = true; cv.setPointerCapture(e.pointerId); seek(e); };
+cv.onpointermove = e => { if (dragging) seek(e); };
+cv.onpointerup = cv.onpointercancel = () => dragging = false;
 addEventListener("resize", draw);
 
 // -- export -----------------------------------------------------------------
