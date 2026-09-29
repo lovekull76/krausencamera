@@ -90,6 +90,7 @@ def main() -> int:
     ap.add_argument("--log", default="krausensim.csv")
     args = ap.parse_args()
 
+    t_start = time.time()      # a zero set any time after this counts
     if args.zero - args.peak_mm < args.nearest:
         print(f"toppen hamnar pa {args.zero - args.peak_mm:.1f} mm, narmare an {args.nearest} -- avbryter")
         return 1
@@ -122,7 +123,6 @@ def main() -> int:
         print("nolla satt", flush=True)
 
     if args.wait_zero:
-        t_start = time.time()
         print("vantar pa att nollan satts (Set zero at fill level)", flush=True)
         while not (os.path.exists(args.zero_file) and os.path.getmtime(args.zero_file) > t_start):
             time.sleep(10)
