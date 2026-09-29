@@ -7,6 +7,7 @@
     krausencamera/<id>/cmd/batch PRESS               never retained
     krausencamera/<id>/cmd/record ON | OFF           never retained
     krausencamera/<id>/recording  ON | OFF           the switch's state, on change
+    krausencamera/<id>/stalled    ON | OFF           from the watchdog, not the meter
     homeassistant/device/<id>/config                 retained, device discovery
 
 **One availability for the whole device.** Device discovery puts every entity
@@ -76,6 +77,8 @@ class HaMqtt:
         self._on_record = on_record
         self._recording = "OFF"
         self.t_rec = f"{self.base}/recording"
+        self._stalled = "OFF"
+        self.t_stall = f"{self.base}/stalled"
         self._last: str | None = None
         self._lock = threading.Lock()
 
@@ -157,8 +160,21 @@ class HaMqtt:
         if last is not None:
             self._c.publish(self.t_state, last, qos=1, retain=False)
         self._c.publish(self.t_rec, self._recording, qos=1, retain=False)
+        self._c.publish(self.t_stall, self._stalled, qos=1, retain=False)
 
-    def publish_recording(self, st: dict) -> None:
+    def publish_stalled(self, stalled: bool) -> None:
+        """Set by the service's watchdog thread, not by the measurement.
+
+        On 2026-09-29 the camera hung while the process and its MQTT link
+        stayed up: HA saw nothing wrong until the values expired fifteen
+        minutes later. A thread that is not the one that hung can say so
+        sooner. Published on change; re-sent on reconnect and HA restart.
+        """
+        v = "ON" if stalled else "OFF"
+        if v != self._stalled:
+            log.warning("mqtt: measurement stalled -> %s", v)
+        self._stalled = v
+        self._c.publish(self.t_stall, v, qos=1, retain=False)(self, st: dict) -> None:
         """The recording switch's state, the moment it changes -- not on the
         five-minute measurement clock."""
         self._recording = "ON" if st.get("recording") else "OFF"
@@ -221,6 +237,9 @@ class HaMqtt:
                           sug_dsp_prc=3, ent_cat="diagnostic"),
             "exp": sensor("exp", "Exposure", "{{ value_json.exp_us }}",
                           unit_of_meas="µs", ent_cat="diagnostic"),
+            "stalled": {"p": "binary_sensor", "unique_id": f"{i}_stalled",
+                        "name": "Measurement stalled", "dev_cla": "problem",
+                        "stat_t": self.t_stall, "pl_on": "ON", "pl_off": "OFF"},
             "halsen": {"p": "binary_sensor", "unique_id": f"{i}_halsen",
                        "name": "In the neck", "dev_cla": "problem",
                        "stat_t": self.t_state,

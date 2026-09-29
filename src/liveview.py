@@ -808,6 +808,10 @@ def main() -> int:
                      args.af_interval, args.af_threshold)
 
     if tracker is not None:
+        # Report a stall well before the watchdog acts on it: two missed
+        # points and a minute of grace.
+        stall_s = (2 * args.measure_interval + 60) if args.pdaf_model else None
+
         def watchdog(t, period):
             """Exit if the camera stops producing, even without raising.
 
@@ -817,9 +821,15 @@ def main() -> int:
             notices -- which once took five hours.
             """
             import os as _os
+            last = None
             while True:
                 time.sleep(30.0)
                 idle = time.time() - t.last_ok
+                if ha is not None and stall_s:
+                    stalled = idle > stall_s
+                    if stalled != last:
+                        ha.publish_stalled(stalled)
+                        last = stalled
                 if idle > period:
                     log.critical("watchdog: no successful cycle for %.0f s "
                                  "(limit %.0f) -- exiting for a restart", idle, period)
