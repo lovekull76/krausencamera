@@ -83,6 +83,10 @@ def main() -> int:
                     help="never bring the target nearer than this, mm")
     ap.add_argument("--new-batch", action="store_true",
                     help="open a batch and set the zero through the service first")
+    ap.add_argument("--wait-zero", action="store_true",
+                    help="let someone else open the batch and set the zero -- from "
+                         "Home Assistant, say -- and start the curve once they have")
+    ap.add_argument("--zero-file", default=os.path.expanduser("~/krausencamera/zero.json"))
     ap.add_argument("--log", default="krausensim.csv")
     args = ap.parse_args()
 
@@ -116,6 +120,13 @@ def main() -> int:
             print(f"  {r[0]} {r[1]}", flush=True)
         post("/api/zero")
         print("nolla satt", flush=True)
+
+    if args.wait_zero:
+        t_start = time.time()
+        print("vantar pa att nollan satts (Set zero at fill level)", flush=True)
+        while not (os.path.exists(args.zero_file) and os.path.getmtime(args.zero_file) > t_start):
+            time.sleep(10)
+        print("nolla satt -- kurvan borjar", flush=True)
 
     t0 = time.time()
     while True:
