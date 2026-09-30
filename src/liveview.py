@@ -681,6 +681,9 @@ def main() -> int:
                    help="where the fill-level zero is kept across restarts")
     p.add_argument("--log-dir", default="/home/pi/krausencamera/matningar",
                    help="daily CSV of every PDAF measurement")
+    p.add_argument("--temp-coeff", type=float, default=0.0,
+                   help="PDAF meter: dpt per degree C of lid temperature, applied "
+                        "relative to the lid at the zero. 0 disables.")
     p.add_argument("--lid-sensor", default=None,
                    help="DS18B20 id on the lid, logged with each measurement")
     p.add_argument("--lamp-mode", choices=("always", "measure"), default="always",
@@ -766,7 +769,8 @@ def main() -> int:
             snapshot_interval_s=args.snapshot_interval,
             snapshot_exposure_us=args.snapshot_exposure_us,
             zero_path=args.zero_file, log_dir=args.log_dir,
-            lid_sensor=args.lid_sensor, settle_min=args.settle_min,
+            lid_sensor=args.lid_sensor, temp_coeff=args.temp_coeff,
+            settle_min=args.settle_min,
             lamp_always_on=args.lamp_mode == "always",
             snapshot_quality=args.snapshot_quality, batches=batches,
             viewers=lambda: Handler._viewers)

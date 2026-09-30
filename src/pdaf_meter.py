@@ -112,7 +112,7 @@ class PdafMeter:
                  restore_controls=None, snapshot_dir=None,
                  snapshot_interval_s=300.0, snapshot_exposure_us=15000,
                  zero_path="zero.json", log_dir="matningar",
-                 lid_sensor=None, settle_min=75.0, lamp_always_on=True,
+                 lid_sensor=None, temp_coeff=0.0, settle_min=75.0, lamp_always_on=True,
                  snapshot_quality=95, batches=None, viewers=lambda: 0) -> None:
         from libcamera import controls
         import af_calibrate as afc
@@ -132,6 +132,12 @@ class PdafMeter:
         self._zero_path = zero_path
         self._log_dir = log_dir
         self._lid_sensor = lid_sensor
+        # dpt per degree of lid temperature. The reading moves with the lid --
+        # warmer reads nearer -- by 0.053 dpt/C (interval test, 2026-09-26),
+        # and correcting for it took the simulation's error from 1.24 to about
+        # 0.36 mm rms (2026-09-30). Applied relative to the lid's temperature
+        # when the zero was set, so the zero itself is never moved by it.
+        self.temp_coeff = temp_coeff
         self._settle_s = settle_min * 60.0
         self._viewers = viewers
         # Batch folders for frames and per-batch logs; without them frame A
@@ -218,7 +224,10 @@ class PdafMeter:
         """Store the last good distance as the fill level. Returns it."""
         if not self.last or self.last.get("status") not in ("ok", "uppvarmning"):
             return None
-        z = {"d_mm": self.last["d_mm"], "dpt": self.last["dpt"],
+        # The uncorrected distance: the correction is referred to this very
+        # moment's lid temperature from now on, so here it is zero by
+        # definition -- and last["d_mm"] was corrected against the old zero.
+        z = {"d_mm": self.last.get("d_raw", self.last["d_mm"]), "dpt": self.last["dpt"],
              "tid": self.last["tid"], "lock_C": self.last["lock_C"]}
         with open(self._zero_path, "w") as f:
             json.dump(z, f)
@@ -341,9 +350,17 @@ class PdafMeter:
              "dpt": None, "sd": None, "d_mm": None, "krausen_mm": None}
         if len(v) >= 2:
             dpt = float(np.mean(v))
-            d = self.model.distance(dpt)
+            # The raw reading stays in the log as `dpt`; the distance and the
+            # height are computed from the corrected one. With no zero there
+            # is no reference temperature, and nothing is corrected.
+            dpt_c = dpt
+            tz = self.zero.get("lock_C") if self.zero else None
+            if self.temp_coeff and tz is not None and lid == lid:
+                dpt_c = dpt - self.temp_coeff * (lid - tz)
+            d = self.model.distance(dpt_c)
             r.update(dpt=round(dpt, 5), sd=round(float(np.std(v, ddof=1)), 5),
-                     d_mm=round(d, 2))
+                     d_mm=round(d, 2), dpt_korr=round(dpt_c, 5),
+                     d_raw=round(self.model.distance(dpt), 2))
             if self.zero:
                 r["krausen_mm"] = round(self.zero["d_mm"] - d, 2)
             if now - self._t_start < self._settle_s:
@@ -389,6 +406,9 @@ class PdafMeter:
             if new:
                 f.write(f"# modell {self.model.path}: dpt = {self.model.a} + "
                         f"{self.model.b}/(d + {self.model.c})\n")
+                f.write(f"# temperaturkorrektion {self.temp_coeff} dpt/C mot lockets "
+                        f"temperatur vid nollningen; dpt ar ra, d_mm och krausen_mm "
+                        f"korrigerade\n")
                 w.writeheader()
             w.writerow(r)
 
@@ -447,8 +467,8 @@ class PdafMeter:
                 self._notify()
                 self._fails = 0
                 self.last_ok = time.time()
-                log.info("%s  %s dpt  -> %s mm%s  (%d/%d, sensor %s C, lid %s C, %s us)",
-                         r["status"], r["dpt"], r["d_mm"],
+                log.info("%s  %s dpt (korr %s)  -> %s mm%s  (%d/%d, sensor %s C, lid %s C, %s us)",
+                         r["status"], r["dpt"], r.get("dpt_korr"), r["d_mm"],
                          f", krausen {r['krausen_mm']} mm" if r["krausen_mm"] is not None else "",
                          r["n_ok"], r["n"], r["sensor_C"], r["lock_C"], r["exp_us"])
                 # 0.9: frame A rides on the measurement cycle, and with both at
