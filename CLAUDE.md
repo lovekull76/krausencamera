@@ -830,8 +830,20 @@ holds focus, and the first point afterwards is marked.
 
 Two weeks from the dummy to the real sight glass, through four housings and a
 second camera module. The short version: **every rebuild lost near range until
-the module was glued down with no force on it, and once it had run in, the only
+a new module was mounted with no preload, and once it had run in, the only
 drift left is the lid's temperature** -- which is measurable and compensable.
+
+> **How build E is actually put together** (Love, 2026-10-01). A thick printed
+> ABS-GF shim carries the camera PCB on one side; the module is **glued into
+> the shim**, its metal face flush with the shim's surface. PCB, shim and
+> aluminium plate are bolted together, which brings the module's metal against
+> the plate through thermal paste -- flush, so nominally no interference, but
+> the module is held by glue in printed plastic, not by the aluminium. The
+> plate is turned to a tight guide fit 4 mm into the sight glass housing, its
+> flange resting flush on the housing's rim.
+>
+> Earlier text here said the module was "glued to the plate". It was not, and
+> the difference matters for what the drift was -- see below.
 
 ### The sight glass does what glass does
 
@@ -851,7 +863,7 @@ All fitted with `b` locked at the old module's 846.29, so `a` carries the change
 | B: new housing, lid over the PCB | 1.08 | 42.1 mm |
 | C: camera 5 mm higher (09-20) | 2.14 | 43.2 mm |
 | D: aluminium plate, pad compressed 0.5 mm | 4.86 | **62.3 mm** |
-| E: **new module glued to the plate, no preload** | 0.15 | **24.8 mm** |
+| E: **new module, glued in the shim, flush against the plate** | 0.15 | **24.8 mm** |
 
 The raise in C shows up in the geometry -- `c` moved +3.96 mm of the 5.00 -- but
 the remount moved `a` by 1.14 dpt and ate the gain. Only range was ever lost,
@@ -944,6 +956,14 @@ continuous drift predicts. And it is not new: the old module drifted as much,
 with the sign changing between nights (+0.17, -0.07 mm/h). Integrated over
 every hour of running it comes to ~0.02 dpt, **a hundred times too small to
 have caused the rail creep** above -- which moved in steps at rebuilds.
+
+> **What was settling is not settled.** "Follows operating time" was read as
+> something in the module. It fits a printed shim equally well: ABS-GF creeps
+> much faster at 40-46 C than at room temperature, and it is only that warm
+> while the camera runs. With the module glued in the shim, both are in the
+> path. The next housing glues the module to aluminium with no printed part
+> holding it, so its run-in decides: the same ~0.1 mm/h decaying over days
+> means the module; much less from the start means the shim.
 
 So a fresh module wants a few days of running before its table is taken. After
 four days this one is at a tenth of where it started.
