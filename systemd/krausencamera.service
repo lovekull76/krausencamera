@@ -27,8 +27,10 @@ WorkingDirectory=/home/pi/krausencamera
 #   calibration did. A slower frame cools the sensor and moves the reading.
 # --lid-sensor: the DS18B20 on the TC ferrule (hardware/ds18b20-sensors.md).
 # --mqtt-config: broker and credentials, on the Pi only (mqtt.example.json).
+# --port 80 --port 8080: the bare name, and the old address for old links.
 # --archive-dir: batch folders, copied to the NAS by krausencamera-arkiv.timer.
 ExecStart=/usr/bin/python3 /home/pi/krausencamera/liveview.py \
+    --port 80 --port 8080 \
     --pdaf-model /home/pi/krausencamera/af-model.csv \
     --measure-interval 300 \
     --max-frame-duration-us 33333 \
@@ -53,6 +55,9 @@ SyslogIdentifier=krausencamera
 # Left unsandboxed on purpose -- picamera2 wants /dev/video*, /dev/dma_heap and
 # CMA, and a tight sandbox here costs more debugging than it buys.
 Nice=-5
+# Port 80 for http://krausenlive/, without running as root: the one
+# capability that allows binding below 1024, and nothing else.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target

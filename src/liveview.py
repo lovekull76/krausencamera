@@ -601,7 +601,11 @@ def build_camera(args):
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--port", type=int, default=8080)
+    p.add_argument("--port", type=int, action="append",
+                   help="port to serve on; repeat for more (default 8080). The "
+                        "service uses 80, for http://krausenlive/, and 8080 so "
+                        "older links keep working. Port 80 needs "
+                        "CAP_NET_BIND_SERVICE, granted in the unit.")
     p.add_argument("--lens-position", type=float, default=7.1,
                    help="dioptres (1/distance in metres); 7.1 ~ 140 mm. "
                         "Calibrate with a focus sweep.")
@@ -841,21 +845,27 @@ def main() -> int:
                          daemon=True).start()
         log.info("watchdog: exit if no cycle completes within %.0f s", period)
 
-    httpd = Server(("", args.port), Handler)
+    ports = args.port or [8080]
+    extra = [Server(("", p), Handler) for p in ports[1:]]
+    for srv in extra:
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+    httpd = Server(("", ports[0]), Handler)
     # systemd stops us with SIGTERM, which by default kills the process
     # without running the finally below -- so MQTT would never say offline and
     # HA would wait for the broker's keepalive instead. Turn it into a shutdown.
     import signal
     signal.signal(signal.SIGTERM,
                   lambda *_: threading.Thread(target=httpd.shutdown, daemon=True).start())
-    log.info("live view on http://0.0.0.0:%d/  (main %dx%d, lores %dx%d)",
-             args.port, *MAIN_SIZE, *lores_size(args))
+    log.info("live view on port %s  (main %dx%d, lores %dx%d)",
+             " and ".join(map(str, ports)), *MAIN_SIZE, *lores_size(args))
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         log.info("shutting down")
     finally:
         httpd.shutdown()
+        for srv in extra:
+            srv.shutdown()
         if recorder and recorder.recording:
             recorder.stop()          # close the MP4 properly, or it is unplayable
         if ha:
