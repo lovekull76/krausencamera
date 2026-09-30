@@ -2,7 +2,7 @@
 """Write index.html at the root of the NAS share: every batch, newest first,
 with a link to its timelapse and its recordings.
 
-    python3 arkivindex.py /mnt/krausen_cam
+    python3 arkivindex.py /mnt/krausen_cam [--live-url http://krausenlive/]
 
 Served by the NAS's own web server (Synology Web Station), so a phone on the
 LAN reaches the timelapses at http://<nas>/... without SMB and without the Pi
@@ -82,7 +82,7 @@ def row(rel, name, s, sub=False):
             + (f'<div class="vids">{vids}</div>' if vids else "") + "</li>")
 
 
-def build(root):
+def build(root, live_url="http://krausenlive/"):
     sections = []
     for dev in sorted(d for d in os.listdir(root)
                       if os.path.isdir(os.path.join(root, d)) and not d.startswith((".", "#", "@"))):
@@ -101,7 +101,8 @@ def build(root):
                       summarise(d), sub=True) for d in loose]
         sections.append(f'<section><h2>{html.escape(dev)}</h2><ul>{"".join(items)}</ul></section>')
     body = "".join(sections) or '<p class="empty">No batches yet.</p>'
-    return PAGE.replace("{body}", body).replace("{made}", time.strftime("%Y-%m-%d %H:%M"))
+    return (PAGE.replace("{body}", body).replace("{made}", time.strftime("%Y-%m-%d %H:%M"))
+                .replace("{live}", html.escape(live_url)))
 
 
 PAGE = """<!doctype html>
@@ -117,6 +118,9 @@ PAGE = """<!doctype html>
          font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   main { max-width: 760px; margin: 0 auto; padding: 20px 16px 40px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .live { font-size: 13px; color: var(--accent); text-decoration: none; border: 1px solid var(--line);
+          border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
   .made { color: var(--dim); font-size: 12px; margin-bottom: 20px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim);
        margin: 24px 0 8px; font-weight: 600; }
@@ -137,7 +141,7 @@ PAGE = """<!doctype html>
 </head>
 <body>
 <main>
-  <h1>Krausen archive</h1>
+  <div class="top"><h1>Krausen archive</h1><a class="live" href="{live}">&#9679; Live view</a></div>
   <div class="made">Updated {made} &middot; newest first &middot; tap a batch for its timelapse</div>
   {body}
 </main>
@@ -147,14 +151,16 @@ PAGE = """<!doctype html>
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print(__doc__)
-        return 2
-    root = sys.argv[1]
-    out = os.path.join(root, "index.html")
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("root")
+    ap.add_argument("--live-url", default="http://krausenlive/")
+    args = ap.parse_args()
+    out = os.path.join(args.root, "index.html")
     tmp = out + ".tmp"
     with open(tmp, "w") as f:
-        f.write(build(root))
+        f.write(build(args.root, args.live_url))
     os.replace(tmp, out)
     return 0
 

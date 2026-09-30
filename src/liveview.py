@@ -72,7 +72,10 @@ PAGE = """<!DOCTYPE html>
            border: 1px solid #444; background: #1c1c1c; color: #ccc; }
   .rates button.on { background: #ddd; color: #111; border-color: #ddd; }
   .hw button.on { background: #2e7d32; border-color: #2e7d32; color: #fff; }
-  .hw button.laser.on { background: #c62828; border-color: #c62828; color: #fff; }
+  .nav { position: absolute; top: 1rem; right: 1rem; font-size: 13px; }
+  .nav a { color: #e0a33a; text-decoration: none; border: 1px solid #444;
+           border-radius: 999px; padding: .35rem .8rem; background: #1c1c1c; }
+  body { position: relative; }
   .hw button.rec { color: #e57373; }
   .hw button.rec.on { background: #c62828; border-color: #c62828; color: #fff; }
   .focus { margin-left: 0.8em; opacity: 0.75; font-variant-numeric: tabular-nums; }
@@ -80,11 +83,11 @@ PAGE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
+  <nav class="nav"><a href="{archive}">Archive &rarr;</a></nav>
   <img src="" alt="Live view from the krausen camera">
   <div class="row rates">{buttons}</div>
   <div class="row hw">
     <button id="led">IR</button>
-    <button id="laser" class="laser">Laser</button>
     <span id="focus" class="focus"></span>
     <span id="exp" class="focus"></span>
   </div>
@@ -101,7 +104,6 @@ PAGE = """<!DOCTYPE html>
   // scoped to .rates -- the hardware toggles are buttons too
   const rateButtons = [...document.querySelectorAll(".rates button")];
   const led = document.getElementById("led");
-  const laser = document.getElementById("laser");
   const focus = document.getElementById("focus");
   const exp = document.getElementById("exp");
 
@@ -134,9 +136,7 @@ PAGE = """<!DOCTYPE html>
         + (st.gain > 1.05 ? " \u00b7 gain " + st.gain.toFixed(1) : "");
     }
     led.classList.toggle("on", st.led);
-    laser.classList.toggle("on", st.laser);
     led.textContent = st.led ? "IR on" : "IR forced off";
-    laser.textContent = st.laser ? "LASER ON" : "Laser off";
     if (st.focus && "zero_mm" in st.focus) {   // the PDAF meter
       const f = st.focus;
       document.getElementById("zerorow").hidden = false;
@@ -173,7 +173,6 @@ PAGE = """<!DOCTYPE html>
     paint(await r.json());
   }
   led.onclick = () => toggle("/api/led", led.textContent !== "IR on");
-  laser.onclick = () => toggle("/api/laser", laser.textContent !== "LASER ON");
   document.getElementById("rec").onclick = async () => {
     const on = !document.getElementById("rec").classList.contains("on");
     const r = await fetch("/api/record?on=" + (on ? 1 : 0), { method: "POST" });
@@ -322,6 +321,7 @@ class Handler(server.BaseHTTPRequestHandler):
     picam2 = None
     stream_timeout: float
     default_fps: float
+    archive_url = "http://krausen/"
     lores: tuple
 
     _viewers = 0
@@ -436,7 +436,8 @@ class Handler(server.BaseHTTPRequestHandler):
         body = (PAGE.replace("{buttons}", buttons)
                     .replace("{default_fps}", str(int(self.default_fps)))
                     .replace("{w}", str(self.lores[0]))
-                    .replace("{h}", str(self.lores[1]))).encode()
+                    .replace("{h}", str(self.lores[1]))
+                    .replace("{archive}", self.archive_url)).encode()
         self._send_bytes(body, "text/html; charset=utf-8")
 
     def _send_stream(self, fps: float) -> None:
@@ -693,6 +694,8 @@ def main() -> int:
     p.add_argument("--archive-dir", default=None,
                    help="batch folders for frame A and per-batch logs, synced "
                         "to the NAS by arkivsynk.sh. Overrides --snapshot-dir.")
+    p.add_argument("--archive-url", default="http://krausen/",
+                   help="where the page's Archive link goes: the NAS start page")
     p.add_argument("--record-max-s", type=float, default=300.0,
                    help="a dry-hop recording stops by itself after this long")
     p.add_argument("--snapshot-quality", type=int, default=95,
@@ -740,6 +743,7 @@ def main() -> int:
     Handler.stream_timeout = args.stream_timeout
     Handler.default_fps = min(max(args.fps, 0.1), FPS_MAX)
     Handler.lores = lores_size(args)
+    Handler.archive_url = args.archive_url
 
     if args.continuous_af and args.snapshot_dir:
         log.error("--continuous-af and --snapshot-dir together would archive frames at a magnification that changes between them. Refusing.")

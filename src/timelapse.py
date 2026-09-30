@@ -67,7 +67,17 @@ def build(folder: str) -> str:
                 t = epoch(r.get("tid", ""))
                 if t is not None:
                     zeros.append([int(t), num(r.get("d_mm"))])
-    data = {"name": os.path.basename(os.path.normpath(folder)),
+    # The archive's start page sits at the share's root, two levels up for a
+    # batch and three for a no-batch day. Found rather than assumed, so a
+    # folder copied elsewhere simply gets no link.
+    index, up = None, os.path.normpath(folder)
+    for depth in range(1, 5):
+        up = os.path.dirname(up)
+        if os.path.exists(os.path.join(up, "index.html")):
+            index = "../" * depth + "index.html"
+            break
+    data = {"name": os.path.basename(os.path.normpath(folder)), "index": index,
+            "live": "http://krausenlive/",
             "frames": frames, "meas": meas, "zeros": zeros,
             "made": time.strftime("%Y-%m-%d %H:%M")}
     return PAGE.replace("/*DATA*/null", json.dumps(data, separators=(",", ":")))
@@ -120,6 +130,10 @@ PAGE = r"""<!doctype html>
   input[type=range] { flex: 1; min-width: 160px; accent-color: var(--accent); }
   .pos { color: var(--dim); font-variant-numeric: tabular-nums; min-width: 9ch; text-align:right; }
   #dl { color: var(--accent); }
+  .nav { display: flex; gap: 8px; width: 100%; }
+  .nav a { font-size: 13px; color: var(--accent); text-decoration: none; border: 1px solid var(--line);
+           border-radius: 999px; padding: 4px 12px; }
+  .nav a#live { margin-left: auto; }
   button:disabled { opacity: .5; cursor: default; }
   canvas { width: 100%; height: 170px; display:block; background: var(--panel);
            border-radius: 4px; cursor: crosshair; touch-action: none; }
@@ -130,6 +144,7 @@ PAGE = r"""<!doctype html>
 <body>
 <main>
   <header>
+    <nav class="nav"><a id="back" hidden>&larr; All batches</a><a id="live">&#9679; Live view</a></nav>
     <h1 id="name"></h1>
     <span class="sub" id="meta"></span>
   </header>
@@ -166,6 +181,8 @@ const D = /*DATA*/null;
 const $ = id => document.getElementById(id);
 const F = D.frames, M = D.meas;
 $("name").textContent = "Batch " + D.name;
+if (D.index) { $("back").href = D.index; $("back").hidden = false; }
+$("live").href = D.live;
 $("meta").textContent = F.length + " frames · page made " + D.made;
 if (!F.length) {
   $("stage").innerHTML = '<div class="empty">No frames in this folder yet.</div>';
