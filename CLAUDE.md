@@ -15,8 +15,13 @@ optical geometry and calibration method.
   CMA** for the camera · zram swap ~415 MB · 28 GB SD card
   - Measured 2026-09-18 under a running calibration: 268 MB used, 147
     available, 52 MB already swapped. It works, but there is not much room.
-    CMA is the obvious place to find some — the main stream is 11.9 MB a frame
-    and the RAW 5.9, so 256 MB is likely more than the pipeline needs.
+  - **Leave the CMA alone.** Measured 2026-10-01 with the full service running
+    (main 2304×1296, lores 1280×720, MJPEG): **~195 MB of the 256 in use, ~200
+    during a recording** (H.264 as well). The processes themselves are small --
+    the service 72 MB -- and ~100 MB stays available. Cutting CMA would win at
+    most ~30 MB and spend the camera's margin; on 2026-09-22 it ran out once
+    (`vc_sm_cma_import_dmabuf ... failed -12`). An earlier note here called CMA
+    "the obvious place to find some"; measured, it is not.
 
 > ⚠️ **The power and thermal characterisation below was done on a 3B+**, which
 > this machine no longer is. The giveaway is `arm=1400MHz` in those tables: a
@@ -166,6 +171,11 @@ system's only sustained load — and then the operating case is camera alone,
 Sticky bits are cleared only by a reboot. Odd low hex digit ⟺ bit 0 set.
 
 ## Running the live view
+
+> **In service this is the systemd unit** (`systemd/krausencamera.service`): the
+> live view on ports 80 and 8080 (`CAP_NET_BIND_SERVICE`, not root), PDAF
+> measurement, MQTT, batches and recording. The section below is how it was run
+> by hand during development.
 
 ```bash
 rsync -avz --exclude '.git' ./src/ krausencamera:~/krausencamera/
@@ -666,6 +676,155 @@ camera has stopped moving.
 What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
+
+## The instrument in service (2026-09-27 to 10-01)
+
+The service now measures krausen height with PDAF, publishes it to Home
+Assistant, archives frames and recordings to the NAS, and builds a timelapse
+page per batch. Site-specific names and addresses are in `LOCAL.md`.
+
+### Measuring in service: the calibration's conditions, kept
+
+`pdaf_meter.py` replaces the laser ranging (`focus_tracker.py`, void
+constants). Every 300 s it takes one point with `af_calibrate`'s own
+`pick_exposure` and `take_point`, not a reimplementation, and holds the
+conditions the table was measured under:
+
+| | why |
+|---|---|
+| **30 fps throughout** | exposures capped at 32 ms, and the live view's frame capped at 33.3 ms (`--max-frame-duration-us 33333`); a slower frame cools the sensor |
+| **lamp lit continuously** | measured below: it moves the reading 0.7 mm |
+| **lens parked at 0 dpt** between points | the VCM's holding current heats the module |
+| **lores 1280×720** in both | `af_calibrate` takes `LORES_SIZE` from `liveview`; the current model was taken at 1024×576 -- AF statistics come from the sensor before scaling, but it is a difference to know about |
+
+The exception is a viewer: while someone watches, the lens holds the last
+focus, and it parks when the last one leaves -- never during a recording.
+
+States: `uppvarmning` for the first 75 min after start, `i_halsen` at the rail
+(surface nearer than ~25 mm), `utanfor_kalibrering` beyond 130 mm,
+`misslyckad`, `morkt` if the lamp was forced off. Each point goes to
+`matningar/matning-YYYYMMDD.csv` with the lid temperature.
+
+### The lamp moves the reading 0.7 mm, so it stays on
+
+`lamptest.sh`, 2026-09-28/29: four rounds of two hours, lamp held on against lit
+only to measure, target fixed at 123.40 mm.
+
+```
+d = a - 1.07 mm/C * lid - 0.447 +- 0.023 mm * (lamp always on)
+lid +0.26 C with the lamp always on
+```
+
+About 0.28 mm through the lid temperature and 0.45 mm more that the ferrule
+sensor does not see -- the lamp warms something nearer the camera. Far over the
+0.1 mm threshold set before the test. The calibration was taken with it on, and
+a lamp switched by viewers would be a varying heat source in the middle of a
+fermentation.
+
+### Temperature compensation: 0.053 dpt/C of the lid
+
+`--temp-coeff 0.053` with `--lid-sensor` on the TC ferrule. The raw dpt is
+corrected by the coefficient times the lid's change **since the zero was set**;
+the zero stores the uncorrected distance and its lid temperature, so a re-zero
+is exact. Without a zero nothing is corrected. The log keeps the raw `dpt`;
+`d_mm` and `krausen_mm` are corrected.
+
+Checked after the fact on the simulation below with the coefficient from the
+independent interval test: rms over 249 points **1.24 -> ~0.36 mm**, the tail
+after the run -1.78 -> ~-0.35 mm. Live, the first night after zeroing, target
+still: **-0.06 +- 0.10 mm** corrected against +0.22 +- 0.13 uncorrected.
+
+> Swap the sensor for the one in the new housing's aluminium plate, and
+> **re-measure the coefficient** -- it belongs to the build.
+
+### Fit the working range, not the whole table
+
+`afmodell.py` fits `dpt = a_s + b/(d + c)` with one offset per night and a
+shared shape, **over heights up to 130 mm only**. Including 158 mm misses it
+by 2.6 mm and takes the rms inside the range from 0.22 to 0.78 mm: the curve
+leaves the hyperbola beyond ~125 mm. Heights beyond are tabulated.
+
+It matters at the zero. A 75 L fill puts the surface 117-125 mm below the lid,
+and the zero is a constant in every height that follows. Leave-one-height-out
+gives 0.1-0.5 mm inside the range but **1.9 mm at 123.40**, the last height
+before a gap to 158. The stage check confirmed it: krausen within 1.2 mm of
+the truth everywhere, the error being the model reading +1 mm at the zero
+height. **The next table wants heights at ~110, 117, 130 and 140 mm**, so the
+fill level sits inside the data instead of on its edge.
+
+### A fermentation played on the stage
+
+`krausensim.py`, 2026-09-29: batch and zero from Home Assistant, then the stage
+walked a curve `h = H (t/tp)^k exp(k(1 - t/tp))` -- 80 mm at 4 h, 12 h long.
+
+```
+143 points against the truth    mean -0.20 mm   rms 0.50   extremes -1.27 / +1.03
+peak                            truth 80.0      measured 80.2
+rising +0.10 mm, falling -0.35 -- the night cooled
+```
+
+Afterwards, stage back at the fill level, the reading sat at -1.8 mm: the lid
+was 0.8 C cooler than at the zero. That is what the compensation above
+removes.
+
+### Home Assistant over MQTT
+
+`ha_mqtt.py`, device discovery (HA 2024.11+), names in English because HA runs
+in English -- the internal Swedish states are translated on the way out.
+
+- **One availability for the device**: LWT `offline` retained; the service says
+  `offline` itself on a clean stop (SIGTERM is turned into a shutdown); an
+  unclean death fires the will.
+- **Nothing stale shown as fresh**: state is **not retained** (HA cannot tell a
+  retained message's age), every sensor has `expire_after` 900 s, heights are
+  null unless the point is valid, and *Last measurement* is the heartbeat --
+  unchanged values do not update HA's "last changed", so watch that one.
+- **HA restarting** (`homeassistant/status online`): discovery and the last
+  point re-sent after 5 s.
+- **Measurement stalled**: a binary sensor set by the watchdog thread, not the
+  meter, after 11 min without a point. On 2026-09-29 the camera hung with the
+  process and its MQTT link alive, and HA saw nothing until expiry.
+- Buttons *Start new batch*, *Set zero at fill level*, switch *Recording*.
+  **Retained commands are refused** -- they would re-run on every reconnect.
+
+### The archive: batches, NAS, timelapse
+
+- **A batch is a folder** `~/arkiv/<YYYY-MM-DD_HHMM>/` with `bilder/`,
+  `matningar.csv`, `nollningar.csv`, `video/`. **Batch and zero are separate**:
+  a batch may be zeroed several times (before and after pitching, or once a
+  skin of foam gives focus something to hold), every zero is logged and every
+  row carries the zero it was computed against. A new batch clears the zero.
+- **The service writes only locally.** `krausencamera-arkiv.timer` rsyncs to the
+  NAS every 10 min (automount, `nofail`, `soft`), and prunes local files older
+  than 14 days only when the NAS holds a copy of the same size. Nothing is ever
+  deleted on the NAS. **Never `rsync --delete` into `~/krausencamera`** -- see
+  Workflow.
+- **`timelapse.html` per batch**, built against the NAS copy: playback, scrub,
+  the curve with a cursor, a start/end range, and **film export** (canvas +
+  MediaRecorder, MP4 where the browser can, time, height and curve burned in,
+  the curve zoomed to the range).
+  > A page opened from `file://` taints the canvas with its own images
+  > (SecurityError) and the film comes out empty. The first test missed it
+  > because headless Chrome ran with `--allow-file-access-from-files`. Now the
+  > export asks for the batch folder once (Chrome/Edge) and checks it is the
+  > right batch; served over http it just works.
+- **`index.html` at the share's root**, served by the NAS's own web server
+  (Synology Web Station, a name-based virtual host), so a phone reaches it
+  without SMB and the Pi carries none of the traffic.
+
+### Recording
+
+`recorder.py`: hardware H.264 on the lores stream beside the live MJPEG, PyAV
+writing MP4 -- no ffmpeg on the Pi. 30 fps, ~2 Mbit/s measured, 5 min cap,
+`live_recording_<time>.mp4` into the batch's `video/`. The meter pauses for it
+(taking the camera lock, so a measurement in progress finishes first), the lens
+holds focus, and the first point afterwards is marked.
+
+> **A camera hang, once.** 2026-09-29 13:22, 25 s after the first test
+> recording stopped: `Camera frontend has timed out`, no measurements, the page's
+> state call blocked. Not reproduced in six start/stop cycles the next day, and
+> the same error occurred on 09-10 and 09-12 before recording existed. Unknown.
+> *Measurement stalled* and the watchdog cover it.
 
 ## The new module: settled, and what is left is the lid's temperature (2026-09-15 to 09-27)
 
