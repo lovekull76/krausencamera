@@ -147,13 +147,19 @@ PAGE = r"""<!doctype html>
     <span class="pos" id="pos"></span>
     <button id="export">Export film</button>
   </div>
+  <div class="bar">
+    <button id="setin" title="Start the range at this frame (I)">[ Start here</button>
+    <button id="setout" title="End the range at this frame (O)">End here ]</button>
+    <button id="full" hidden>Whole batch</button>
+    <span class="pos" id="range" style="text-align:left">whole batch</span>
+  </div>
   <div class="bar" id="exportbar" hidden>
     <span id="exportmsg"></span>
     <button id="cancel">Cancel</button>
     <a id="dl" hidden></a>
   </div>
   <canvas id="chart" aria-label="Krausen height over the batch"></canvas>
-  <div class="help">Export film records every frame at the chosen speed, with the time, the height and the curve burned in, at the frames' own resolution. It plays through in real time, so keep this tab visible while it runs. &middot; Space plays and pauses &middot; &larr; &rarr; step one frame &middot; click or drag in the curve to jump &middot; dashed lines are zeros</div>
+  <div class="help">Export film records every frame at the chosen speed, with the time, the height and the curve burned in, at the frames' own resolution. It plays through in real time, so keep this tab visible while it runs. &middot; Start here / End here (or I / O) limit playback and the film to the krausen, without the weeks of tail &middot; Space plays and pauses &middot; &larr; &rarr; step one frame &middot; click or drag in the curve to jump &middot; dashed lines are zeros</div>
 </main>
 <script>
 const D = /*DATA*/null;
@@ -216,15 +222,39 @@ function show(i) {
 }
 
 // -- playback ---------------------------------------------------------------
+// -- range: the part of the batch to play and to export ------------------------
+// A fermentation is a day or two of krausen and then weeks of tail. The range
+// keeps a film to the part worth sending. Remembered per batch in this browser.
+let inI = 0, outI = Math.max(0, F.length - 1);
+const rkey = "krausen-range:" + D.name;
+try {
+  const r = JSON.parse(localStorage.getItem(rkey) || "null");
+  if (r && r.a < r.b && r.b < F.length) { inI = r.a; outI = r.b; }
+} catch (e) {}
+const ranged = () => inI > 0 || outI < F.length - 1;
+function setRange(a, b) {
+  inI = Math.max(0, Math.min(a, F.length - 1)); outI = Math.max(inI, Math.min(b, F.length - 1));
+  try { ranged() ? localStorage.setItem(rkey, JSON.stringify({ a: inI, b: outI })) : localStorage.removeItem(rkey); } catch (e) {}
+  const n = outI - inI + 1;
+  $("range").textContent = ranged()
+    ? `${fmtElapsed(F[inI][1] - t0).replace(" in", "")} \u2192 ${fmtElapsed(F[outI][1] - t0)} \u00b7 ${n} frames`
+    : "whole batch";
+  $("full").hidden = !ranged();
+  draw();
+}
+$("setin").onclick = () => setRange(idx, idx >= outI ? F.length - 1 : outI);
+$("setout").onclick = () => setRange(idx <= inI ? 0 : inI, idx);
+$("full").onclick = () => setRange(0, F.length - 1);
+
 let timer = null;
 function play(on) {
   clearInterval(timer); timer = null;
   $("play").innerHTML = on ? "&#10074;&#10074; Pause" : "&#9654; Play";
   if (!on) return;
-  if (idx >= F.length - 1) show(0);
+  if (idx < inI || idx >= outI) show(inI);
   timer = setInterval(() => {
     const next = cache.get(idx + 1);
-    if (idx >= F.length - 1) { play(false); return; }
+    if (idx >= outI) { play(false); return; }
     if (next && !next.complete) return;       // wait for the frame rather than skip it
     show(idx + 1);
   }, 1000 / +$("speed").value);
@@ -238,6 +268,8 @@ addEventListener("keydown", e => {
   if (e.code === "Space") { e.preventDefault(); play(!timer); }
   else if (e.key === "ArrowRight") { play(false); show(idx + 1); }
   else if (e.key === "ArrowLeft") { play(false); show(idx - 1); }
+  else if (e.key === "i") $("setin").click();
+  else if (e.key === "o") $("setout").click();
 });
 
 // -- the curve --------------------------------------------------------------
@@ -246,15 +278,20 @@ addEventListener("keydown", e => {
 const cv = $("chart"), cx = cv.getContext("2d");
 const pts = M.filter(m => val(m) !== null);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-function chart(g, W, H, s, cursorT, fill) {
+function chart(g, W, H, s, cursorT, fill, opts = {}) {
   if (fill) { g.fillStyle = css("--panel"); g.fillRect(0, 0, W, H); } else g.clearRect(0, 0, W, H);
   const L = 44 * s, R = 10 * s, T = 10 * s, B = 22 * s, w = W - L - R, h = H - T - B;
   g.font = `${11 * s}px -apple-system, "Segoe UI", sans-serif`; g.lineWidth = s;
   if (!pts.length) { g.fillStyle = css("--dim"); g.fillText("No heights recorded in this batch yet.", L, T + 20 * s); return null; }
-  let lo = Math.min(...pts.map(val)), hi = Math.max(...pts.map(val));
+  // opts.zoom = {a, b}: draw only that span, scaled to it -- the film of a
+  // chosen range. opts.shade = {a, b}: whole batch, dimmed outside the span.
+  const z = opts.zoom;
+  const inZ = z ? pts.filter(p => p[0] >= z.a - 300 && p[0] <= z.b + 300) : pts;
+  const vs = (inZ.length ? inZ : pts).map(val);
+  let lo = Math.min(...vs), hi = Math.max(...vs);
   if (hi - lo < 5) { const m = (hi + lo) / 2; lo = m - 2.5; hi = m + 2.5; }
   const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
-  const ta = Math.min(t0, pts[0][0]), tb = Math.max(t1, pts[pts.length - 1][0]);
+  const ta = z ? z.a : Math.min(t0, pts[0][0]), tb = z ? z.b : Math.max(t1, pts[pts.length - 1][0]);
   const X = t => L + (t - ta) / Math.max(1, tb - ta) * w;
   const Y = v => hasK ? T + (hi - v) / (hi - lo) * h : T + (v - lo) / (hi - lo) * h;
   g.strokeStyle = css("--line"); g.fillStyle = css("--dim"); g.textAlign = "right"; g.textBaseline = "middle";
@@ -268,8 +305,8 @@ function chart(g, W, H, s, cursorT, fill) {
   g.textAlign = "center"; g.textBaseline = "top";
   const span = tb - ta;
   const tick = span > 2 * 86400 ? 86400 : span > 12 * 3600 ? 6 * 3600 : span > 3 * 3600 ? 3600 : 1800;
-  for (let k = 0; ta + k * tick <= tb; k++) {
-    const e = k * tick, x = X(ta + e);
+  for (let tt = t0 + Math.ceil((ta - t0) / tick) * tick; tt <= tb; tt += tick) {
+    const e = tt - t0, x = X(tt);
     g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + h); g.stroke();
     const d = Math.floor(e / 86400), hh = Math.floor(e % 86400 / 3600), mm = Math.floor(e % 3600 / 60);
     g.fillText(tick >= 86400 ? "+" + d + " d" : "+" + (d * 24 + hh) + (mm ? ":" + String(mm).padStart(2, "0") : "") + " h", x, T + h + 4 * s);
@@ -279,12 +316,20 @@ function chart(g, W, H, s, cursorT, fill) {
   for (const z of D.zeros) { const x = X(z[0]); g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + h); g.stroke(); }
   g.setLineDash([]);
   // the curve, broken where there is a gap of more than half an hour
+  g.save(); g.beginPath(); g.rect(L, T - 2 * s, w, h + 4 * s); g.clip();
   g.strokeStyle = css("--accent"); g.lineWidth = 1.6 * s; g.beginPath();
   pts.forEach((p, i) => {
     const gap = i && p[0] - pts[i - 1][0] > 1800;
     (i === 0 || gap) ? g.moveTo(X(p[0]), Y(val(p))) : g.lineTo(X(p[0]), Y(val(p)));
   });
   g.stroke();
+  if (opts.shade) {
+    g.fillStyle = "rgba(14,17,19,.62)";
+    const xa = X(opts.shade.a), xb = X(opts.shade.b);
+    g.fillRect(L, T - 2 * s, Math.max(0, xa - L), h + 4 * s);
+    g.fillRect(xb, T - 2 * s, Math.max(0, L + w - xb), h + 4 * s);
+  }
+  g.restore();
   // the cursor, with a dot where it meets the curve
   if (cursorT !== null) {
     const x = X(cursorT);
@@ -299,7 +344,8 @@ function chart(g, W, H, s, cursorT, fill) {
 function draw() {
   const r = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
   cv.width = W * r; cv.height = H * r; cx.setTransform(r, 0, 0, r, 0, 0);
-  cv._X = chart(cx, W, H, 1, F.length ? F[idx][1] : null, false);
+  cv._X = chart(cx, W, H, 1, F.length ? F[idx][1] : null, false,
+                 ranged() ? { shade: { a: F[inI][1], b: F[outI][1] } } : {});
 }
 function seek(e) {
   const g = cv._X; if (!g || !F.length) return;
@@ -392,7 +438,8 @@ $("export").onclick = async () => {
   // Read ahead a few frames so decoding keeps up with the chosen rate.
   const ahead = new Map();
   const fetchFrame = i => { if (i < F.length && !ahead.has(i)) ahead.set(i, get(i)); return ahead.get(i); };
-  const first = await fetchFrame(0);
+  const i0 = inI, i1 = outI, zoom = ranged() ? { zoom: { a: F[i0][1], b: F[i1][1] } } : {};
+  const first = await fetchFrame(i0);
   const IW = first.naturalWidth || first.width, IH = first.naturalHeight || first.height;
   const s = IW / 1200, CH = Math.round(IH * 0.26 / 2) * 2;
   const film = document.createElement("canvas");
@@ -411,7 +458,7 @@ $("export").onclick = async () => {
   $("export").disabled = true; $("cancel").hidden = false;
   rec.start(1000);
   let due = performance.now();
-  for (let i = 0; i < F.length && !cancelled; i++) {
+  for (let i = i0; i <= i1 && !cancelled; i++) {
     for (let k = 1; k <= 8; k++) fetchFrame(i + k);
     let im = null;
     const p = fetchFrame(i);
@@ -421,10 +468,10 @@ $("export").onclick = async () => {
     g.drawImage(im, 0, 0, IW, IH);
     if (im.close) im.close();
     burnCaption(g, i, s);
-    g.save(); g.translate(0, IH); chart(g, IW, CH, s, F[i][1], true); g.restore();
+    g.save(); g.translate(0, IH); chart(g, IW, CH, s, F[i][1], true, zoom); g.restore();
     track.requestFrame();
     if (i % 2 === 0) show(i);      // let the page play along, so it is visibly working
-    $("exportmsg").textContent = `Recording frame ${i + 1} of ${F.length} at ${fps} fps — keep this tab visible`;
+    $("exportmsg").textContent = `Recording frame ${i - i0 + 1} of ${i1 - i0 + 1} at ${fps} fps — keep this tab visible`;
     due += 1000 / fps;
     await new Promise(r => setTimeout(r, Math.max(0, due - performance.now())));
   }
@@ -434,13 +481,15 @@ $("export").onclick = async () => {
   const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
   const a = $("dl");
   a.href = URL.createObjectURL(new Blob(chunks, { type: mime.split(";")[0] }));
-  a.download = `krausen-${D.name}-${fps}fps.${ext}`;
+  const part = ranged() ? `-${Math.round((F[i0][1] - t0) / 3600)}h-${Math.round((F[i1][1] - t0) / 3600)}h` : "";
+  a.download = `krausen-${D.name}${part}-${fps}fps.${ext}`;
   a.textContent = `Save ${a.download} (${(chunks.reduce((n, b) => n + b.size, 0) / 1e6).toFixed(0)} MB)`;
   a.hidden = false;
-  $("exportmsg").textContent = `${IW}×${IH + CH}, ${F.length} frames, ${(F.length / fps).toFixed(1)} s.`;
+  $("exportmsg").textContent = `${IW}×${IH + CH}, ${i1 - i0 + 1} frames, ${((i1 - i0 + 1) / fps).toFixed(1)} s.`;
   a.click();
 };
-show(0);
+setRange(inI, outI);
+show(inI);
 </script>
 </body>
 </html>
