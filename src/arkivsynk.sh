@@ -29,7 +29,14 @@ mkdir -p "$DEST" || exit 1
 
 # CIFS has no Unix owners or modes, so copy content and times only. --partial
 # lets an interrupted large file (a video) resume rather than restart.
-opts=(-rt --no-perms --no-owner --no-group --partial --timeout=60)
+#
+# --size-only, because the times do not stick. rsync sets a file's mtime and
+# the NAS then overwrites it when the file is closed, so every run saw every
+# file as changed and re-sent the whole archive -- 716 MB, four minutes of
+# saturated WiFi out of every ten. A camera hang (2026-10-01 12:05) landed in
+# one of those. Frames and recordings never change once written and the logs
+# only grow, so size is enough to tell what is new.
+opts=(-rt --size-only --no-perms --no-owner --no-group --partial --timeout=60)
 [ -d "$SRC" ] && rsync "${opts[@]}" "$SRC/" "$DEST/"
 [ -d "$LOGS" ] && rsync "${opts[@]}" "$LOGS/" "$DEST/matningar/"
 
