@@ -295,10 +295,15 @@ class FrameBroker(io.BufferedIOBase):
     def __init__(self) -> None:
         self.frame: bytes | None = None
         self._ready = threading.Condition()
+        # When the last frame arrived. The encoder runs at the sensor's 30 fps
+        # whether anyone watches or not, so silence here is the camera itself
+        # stopping -- the quickest sign of a CSI frontend timeout there is.
+        self.last: float | None = None
 
     def write(self, buf: bytes) -> int:
         with self._ready:
             self.frame = buf
+            self.last = time.monotonic()
             self._ready.notify_all()
         return len(buf)
 
@@ -699,6 +704,9 @@ def main() -> int:
                         "to the NAS by arkivsynk.sh. Overrides --snapshot-dir.")
     p.add_argument("--archive-url", default="http://krausen/",
                    help="where the page's Archive link goes: the NAS start page")
+    p.add_argument("--frame-timeout", type=float, default=15.0,
+                   help="exit for a restart when the camera has sent no frame "
+                        "for this many seconds")
     p.add_argument("--record-max-s", type=float, default=300.0,
                    help="a dry-hop recording stops by itself after this long")
     p.add_argument("--snapshot-quality", type=int, default=95,
@@ -834,8 +842,24 @@ def main() -> int:
             """
             import os as _os
             last = None
+            n = 0
             while True:
-                time.sleep(30.0)
+                time.sleep(5.0)
+                n += 1
+                # The frames first. A frontend timeout stops them at once, and
+                # waiting for the measurement to notice took seventeen minutes
+                # on 2026-10-01; this restarts within about half a minute.
+                fl = broker.last
+                if fl is not None and time.monotonic() - fl > args.frame_timeout:
+                    log.critical("watchdog: no frame from the camera for %.0f s -- "
+                                 "frontend timeout? exiting for a restart",
+                                 time.monotonic() - fl)
+                    if ha is not None:
+                        ha.publish_stalled(True)
+                        time.sleep(1.0)
+                    _os._exit(17)
+                if n % 6:
+                    continue
                 idle = time.time() - t.last_ok
                 if ha is not None and stall_s:
                     stalled = idle > stall_s

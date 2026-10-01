@@ -825,6 +825,14 @@ holds focus, and the first point afterwards is marked.
 > state call blocked. Not reproduced in six start/stop cycles the next day, and
 > the same error occurred on 09-10 and 09-12 before recording existed. Unknown.
 > *Measurement stalled* and the watchdog cover it.
+>
+> **Again 2026-10-01 12:05:26**, no recording, no viewer -- but in the middle
+> of an archive sync that was re-sending the whole 716 MB archive over WiFi
+> every ten minutes (rsync's mtimes did not stick on the NAS; fixed with
+> `--size-only`, a sync is now seconds). Not proven to be the trigger. The
+> recovery took 17 min, the measurement watchdog's period; the watchdog now
+> also watches the MJPEG encoder, which runs at 30 fps whether anyone watches
+> or not, and exits for a restart after `--frame-timeout` 15 s without a frame.
 
 ## The new module: settled, and what is left is the lid's temperature (2026-09-15 to 09-27)
 
