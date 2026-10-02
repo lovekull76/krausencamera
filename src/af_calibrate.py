@@ -651,7 +651,7 @@ def main() -> int:
                         "exposure slows the sensor's readout, it runs cooler, "
                         "and the reading after it comes out 24 mdpt low "
                         "(2026-09-23). Service runs at 30 fps, so calibrate there.")
-    p.add_argument("--bitrate", type=int, default=12_000_000,
+    p.add_argument("--bitrate", type=int, default=25_000_000,
                    help="MJPEG bitrate for the preview. Matches liveview's "
                         "default; a third of it visibly posterises a smooth "
                         "gradient like the tube wall.")

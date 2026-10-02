@@ -626,7 +626,10 @@ def main() -> int:
     # was a visible-light guess and gave R=225 G=148 B=222 -- magenta.
     p.add_argument("--red-gain", type=float, default=0.94)
     p.add_argument("--blue-gain", type=float, default=1.01)
-    p.add_argument("--bitrate", type=int, default=12_000_000)
+    # 25 Mbit/s since lores went to 1280x720: at the old 12 the same bits were
+    # spread over 1.6x the pixels and smooth gradients -- the vignette above
+    # all -- showed hard banding (2026-10-03).
+    p.add_argument("--bitrate", type=int, default=25_000_000)
     p.add_argument("--lores", default="%dx%d" % LORES_SIZE,
                    help="size of the stream the web view encodes. Keep both "
                         "dimensions multiples of 16: JPEG codes in 16x16 blocks, "

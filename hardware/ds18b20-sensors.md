@@ -23,6 +23,12 @@ minuter. De sista sex avläsningarna:
 | `28-ef39cb356461` | 23.3120 °C | referens | TC-stosen till kamerahuset |
 | `28-f161ca356461` | 23.1870 °C | −0.1250 | experimentkortet på locket |
 | `28-fe3ecb356461` | 23.2500 °C | −0.0620 | ambient utanför lådan |
+| `28-713ecb356461` | — | ej uppmätt | **aluminiumplattan i hus v2**, i fickan bredvid modulen (2026-10-03) |
+
+> Plattgivaren kom till med hus v2 och har ingen uppmätt offset mot de andra.
+> Den ska bli tjänstens `--lid-sensor` när inkörningen visat att den följer
+> kameran minst lika bra som hylsgivaren, och temperaturkoefficienten ska då
+> mätas om mot den.
 
 **Största skillnad 0,125 °C**, alltså två kvantiseringssteg — vid 0,63 mm/°C
 är det 0,08 mm om två givare jämförs rakt av.
