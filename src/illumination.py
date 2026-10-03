@@ -58,6 +58,10 @@ def _make_pin(name: str, pin: int):
     BadPinFactory when no backend is available. Neither is an ImportError, and
     neither should stop the server from starting without hardware attached.
     """
+    if pin is None:
+        # Nothing fitted. The laser went when PDAF took over, and with it the
+        # claim on its pin -- a stub costs nothing and leaves the pin alone.
+        return _NullPin(name, -1)
     try:
         from gpiozero import DigitalOutputDevice
     except ImportError:

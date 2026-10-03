@@ -706,7 +706,8 @@ def main() -> int:
     p.add_argument("--park-low", type=float, default=2.5)
     p.add_argument("--park-high", type=float, default=12.0)
     p.add_argument("--exposure-us", type=int, default=15000)
-    p.add_argument("--led-pin", type=int, default=17)
+    p.add_argument("--led-pin", type=int, default=10,
+                   help="IR lamp; GPIO10 since the Wide Input SHIM took pins 1-12")
     args = p.parse_args()
     if args.park_after is not None and args.park_after < 0:
         args.park_after = None

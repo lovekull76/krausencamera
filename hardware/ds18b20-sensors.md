@@ -1,8 +1,9 @@
-# DS18B20, 1-Wire på GPIO18
+# DS18B20, 1-Wire på GPIO24
 
 ```
-dtoverlay=w1-gpio,gpiopin=18        i /boot/firmware/config.txt
-VDD 3.3 V  ·  DQ GPIO18  ·  GND  ·  4.7 kΩ mellan DQ och 3.3 V
+dtoverlay=w1-gpio,gpiopin=24        i /boot/firmware/config.txt
+VDD 3.3 V (stift 17)  ·  DQ GPIO24 (stift 18)  ·  GND (stift 20)
+4.7 kΩ mellan DQ och 3.3 V
 läs ur /sys/bus/w1/devices/28-*/temperature, tusendels grader
 ```
 
@@ -11,7 +12,10 @@ datalinjen till 5 V och Pi:ns GPIO tål 3,3. En pullup till 5 V genom 4,7 kΩ
 begränsar strömmen till 0,30 mA genom klämdioden och överlevs — det hände här
 2026-09-11 och GPIO18 klarade sig — men det är tur, inte konstruktion.
 
-GPIO17 är lampan och GPIO27 lasern. 18 var den enda av de tre utan ägare.
+Sedan 2026-10-03 sitter en Pimoroni Wide Input SHIM på stift 1–12, där både
+lampan (GPIO17) och bussen (GPIO18) satt. Allt flyttades till klustret stift
+17–20: 3,3 V, GPIO24 (bussen), GPIO10 (lampan) och GND. Lasern på GPIO27 är
+borta. Före flytten: GPIO17 lampan, GPIO27 lasern, GPIO18 bussen.
 
 ## Offset mellan givarna, mätt 2026-09-12
 

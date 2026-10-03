@@ -641,8 +641,14 @@ def main() -> int:
                         "deliver the rate printed on the button; a dark scene "
                         "then costs gain rather than frame rate. Raise it to let "
                         "the exposure grow instead")
-    p.add_argument("--led-pin", type=int, default=17, help="GPIO pin for the IR illumination")
-    p.add_argument("--laser-pin", type=int, default=27, help="GPIO pin for the laser enable")
+    # GPIO10 (pin 19) since 2026-10-03: the Wide Input SHIM covers pins 1-12,
+    # where the lamp (GPIO17, pin 11) used to be. Pins 17-20 give 3V3, GPIO24
+    # (1-Wire), GPIO10 (lamp) and GND in one row. GPIO10 is SPI0 MOSI, so SPI
+    # must stay off -- the lamp rather than the sensors goes if it is ever on.
+    p.add_argument("--led-pin", type=int, default=10, help="GPIO pin for the IR illumination")
+    p.add_argument("--laser-pin", type=int, default=None,
+                   help="GPIO pin for the laser enable; none is fitted since PDAF "
+                        "replaced triangulation, so no pin is claimed by default")
     p.add_argument("--fps", type=float, default=10.0,
                    help="default stream rate; viewers can override per connection "
                         "with ?fps=N up to the sensor rate")

@@ -33,6 +33,10 @@ optical geometry and calibration method.
 > so the margins are wider, not tighter. Verified 2026-09-18: `throttled=0x0`
 > after 18 hours and no voltage lines in `dmesg`.
 - **WiFi only**, no cable
+- **GPIO** (from 2026-10-03): IR lamp **GPIO10** (pin 19), 1-Wire DS18B20 bus
+  **GPIO24** (pin 18), with 3V3 on pin 17 and GND on pin 20. Power through a
+  Pimoroni Wide Input SHIM on pins 1-12. GPIO10 is SPI0 MOSI, so SPI stays
+  off. Before the SHIM: lamp GPIO17, bus GPIO18, laser GPIO27 (removed).
 
 ## Access
 
