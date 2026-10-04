@@ -120,8 +120,12 @@ class HaMqtt:
         log.info("mqtt: connected")
         c.subscribe([(f"{self.t_cmd}/#", 1), (self.t_birth, 1)])
         self._discovery()
-        c.publish(self.t_status, "online", qos=1, retain=True)
+        # Fresh values before 'online', not after. HA shows an entity's last
+        # known value the moment the device becomes available again, so after
+        # a watchdog restart 'Measurement stalled' flashed 'Problem' a second
+        # time until the new process's 'OFF' arrived (2026-10-04 18:13:29).
         self._resend()
+        c.publish(self.t_status, "online", qos=1, retain=True)
 
     def _disconnected(self, c, userdata, flags, reason, properties) -> None:
         log.warning("mqtt: disconnected (%s), reconnecting", reason)
