@@ -95,6 +95,15 @@ class Model:
         return self.a + self.b / (d + self.c)
 
 
+def read_soc_temp() -> float:
+    """The Pi's SoC temperature, for watching the housing's ventilation."""
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp") as f:
+            return int(f.read()) / 1000.0
+    except Exception:
+        return float("nan")
+
+
 def read_ds18b20(sensor_id: str | None) -> float:
     if not sensor_id:
         return float("nan")
@@ -112,7 +121,8 @@ class PdafMeter:
                  restore_controls=None, snapshot_dir=None,
                  snapshot_interval_s=300.0, snapshot_exposure_us=15000,
                  zero_path="zero.json", log_dir="matningar",
-                 lid_sensor=None, temp_coeff=0.0, settle_min=75.0, lamp_always_on=True,
+                 lid_sensor=None, plate_sensor=None, temp_coeff=0.0, settle_min=75.0,
+                 lamp_always_on=True,
                  snapshot_quality=95, batches=None, viewers=lambda: 0) -> None:
         from libcamera import controls
         import af_calibrate as afc
@@ -132,6 +142,10 @@ class PdafMeter:
         self._zero_path = zero_path
         self._log_dir = log_dir
         self._lid_sensor = lid_sensor
+        # The DS18B20 in housing v2's aluminium plate. Logged beside the lid
+        # sensor during the run-in; it becomes the compensation sensor once it
+        # has shown it follows the camera at least as well (2026-10-03).
+        self._plate_sensor = plate_sensor
         # dpt per degree of lid temperature. The reading moves with the lid --
         # warmer reads nearer -- by 0.053 dpt/C (interval test, 2026-09-26),
         # and correcting for it took the simulation's error from 1.24 to about
@@ -343,10 +357,14 @@ class PdafMeter:
         v = lo + hi
         now = time.time()
         lid = read_ds18b20(self._lid_sensor)
+        plate = read_ds18b20(self._plate_sensor)
+        soc = read_soc_temp()
         r = {"t": now, "tid": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now)),
              "n_ok": len(v), "n": args.runs, "sensor_C": t1, "exp_us": exp_us,
              "niva": round(level, 1) if level == level else None,
              "lock_C": None if lid != lid else round(lid, 3),
+             "platta_C": None if plate != plate else round(plate, 3),
+             "soc_C": None if soc != soc else round(soc, 1),
              "dpt": None, "sd": None, "d_mm": None, "krausen_mm": None}
         if len(v) >= 2:
             dpt = float(np.mean(v))

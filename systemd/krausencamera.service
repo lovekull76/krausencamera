@@ -38,6 +38,7 @@ ExecStart=/usr/bin/python3 /home/pi/krausencamera/liveview.py \
     --measure-interval 300 \
     --max-frame-duration-us 33333 \
     --lid-sensor 28-ef39cb356461 \
+    --plate-sensor 28-713ecb356461 \
     --temp-coeff 0.053 \
     --mqtt-config /home/pi/krausencamera/mqtt.json \
     --archive-dir /home/pi/arkiv \

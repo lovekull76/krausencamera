@@ -698,6 +698,9 @@ def main() -> int:
     p.add_argument("--temp-coeff", type=float, default=0.0,
                    help="PDAF meter: dpt per degree C of lid temperature, applied "
                         "relative to the lid at the zero. 0 disables.")
+    p.add_argument("--plate-sensor", default=None,
+                   help="DS18B20 id in the housing's aluminium plate, logged and "
+                        "published beside the lid sensor")
     p.add_argument("--lid-sensor", default=None,
                    help="DS18B20 id on the lid, logged with each measurement")
     p.add_argument("--lamp-mode", choices=("always", "measure"), default="always",
@@ -786,7 +789,8 @@ def main() -> int:
             snapshot_interval_s=args.snapshot_interval,
             snapshot_exposure_us=args.snapshot_exposure_us,
             zero_path=args.zero_file, log_dir=args.log_dir,
-            lid_sensor=args.lid_sensor, temp_coeff=args.temp_coeff,
+            lid_sensor=args.lid_sensor, plate_sensor=args.plate_sensor,
+            temp_coeff=args.temp_coeff,
             settle_min=args.settle_min,
             lamp_always_on=args.lamp_mode == "always",
             snapshot_quality=args.snapshot_quality, batches=batches,
