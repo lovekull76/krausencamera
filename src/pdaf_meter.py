@@ -356,6 +356,10 @@ class PdafMeter:
 
         v = lo + hi
         now = time.time()
+        # Taken while someone watched: the lens is held in focus for them
+        # between points, and that moved the reading about 1 mm at 123 mm
+        # (2026-10-05). Marked, not discarded -- on moving foam it is noise.
+        watched = self._viewers() > 0
         lid = read_ds18b20(self._lid_sensor)
         plate = read_ds18b20(self._plate_sensor)
         soc = read_soc_temp()
@@ -365,7 +369,8 @@ class PdafMeter:
              "lock_C": None if lid != lid else round(lid, 3),
              "platta_C": None if plate != plate else round(plate, 3),
              "soc_C": None if soc != soc else round(soc, 1),
-             "dpt": None, "sd": None, "d_mm": None, "krausen_mm": None}
+             "dpt": None, "sd": None, "d_mm": None, "krausen_mm": None,
+             "tittare": int(watched)}
         if len(v) >= 2:
             dpt = float(np.mean(v))
             # The raw reading stays in the log as `dpt`; the distance and the
@@ -418,7 +423,7 @@ class PdafMeter:
         path = os.path.join(self._log_dir, f"matning-{r['tid'][:10].replace('-', '')}.csv")
         new = not os.path.exists(path)
         cols = ["tid", "status", "dpt", "sd", "n_ok", "n", "d_mm", "krausen_mm",
-                "sensor_C", "lock_C", "exp_us", "niva"]
+                "sensor_C", "lock_C", "exp_us", "niva", "tittare"]
         with open(path, "a", newline="") as f:
             w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
             if new:

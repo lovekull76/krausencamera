@@ -206,6 +206,7 @@ class HaMqtt:
             "sensor_C": r.get("sensor_C"),
             "exp_us": r.get("exp_us"),
             "n_ok": r.get("n_ok"),
+            "viewer": bool(r.get("tittare")),
         }
         text = json.dumps(body)
         with self._lock:

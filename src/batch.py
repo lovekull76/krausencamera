@@ -32,7 +32,7 @@ import time
 log = logging.getLogger(__name__)
 
 MEAS_COLS = ["tid", "status", "dpt", "sd", "n_ok", "n", "d_mm", "noll_mm",
-             "krausen_mm", "sensor_C", "lock_C", "exp_us", "niva"]
+             "krausen_mm", "sensor_C", "lock_C", "exp_us", "niva", "tittare"]
 ZERO_COLS = ["tid", "d_mm", "dpt", "lock_C"]
 
 
