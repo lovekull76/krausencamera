@@ -2946,8 +2946,10 @@ Consequences to build in from the start:
    Remedy: always take frame A after a **fixed warm-up from a known state**, and
    log the lamp's prior state so the analysis can flag affected frames.
 
-   **Measured 2026-09-04**, three 850 nm LEDs at 114 mA potted in a PE/PTFE rod,
-   locked exposure, cold start after 19 minutes off:
+   **Measured 2026-09-04**, three 850 nm LEDs (Vishay TSHG5410) at 114 mA, in
+   an open cavity in a thin-walled PTFE cup with a retaining plug above them --
+   not potted, but with little room for air to circulate. Locked exposure, cold
+   start after 19 minutes off:
 
    | | |
    |---|---|
@@ -2959,8 +2961,19 @@ Consequences to build in from the start:
    | 99 % | 19.1 min |
 
    Two time constants stacked: the junction heats in under two minutes, the
-   surrounding plastic mass over roughly twenty. At ~1 % output per 10 °C that
-   is around 28 °C of package rise — the potting really is a thermos.
+   cup and its surroundings over roughly twenty. The datasheet gives
+   **-0.27 %/K** for radiant power, so the droop is about **10 K** of rise after
+   the first frame -- a lower bound, since whatever the junction gained in the
+   first second is already in the "cold" reading. An earlier version of this
+   note assumed ~1 %/10 K and called it 28 K and "a thermos"; neither holds.
+
+   > **The drive, measured 2026-10-08:** 12 V switched supply, 2 x 33 ohm in
+   > series on the housing side, 4.67 V across the three LEDs (1.56 V each),
+   > **110 mA**. The datasheet's maximum is 100 mA continuous and 180 mW; each
+   > LED takes ~0.17 W. Within power, 10 % over current. ~80 ohm (~92 mA) at
+   > the next rebuild, before a calibration, not during one -- the lamp's heat
+   > moves the reading. A first meter read 0.17 A; a second gave 110 mA, which
+   > is what 12 V and 66 ohm predict.
 
    So `was_lit_for` spans about **2.8 %**, which is small next to the ~130 % the
    scene brightens as the krausen rises toward the lamp. Worth flagging in
