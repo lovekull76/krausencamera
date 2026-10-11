@@ -25,10 +25,13 @@ WorkingDirectory=/home/pi/krausencamera
 #   copied here from calib/ -- replace it after every recalibration.
 # --max-frame-duration-us 33333: the live view must hold 30 fps as the
 #   calibration did. A slower frame cools the sensor and moves the reading.
-# --lid-sensor: the DS18B20 on the TC ferrule (hardware/ds18b20-sensors.md).
-# --temp-coeff: 0.053 dpt/C of that sensor, from the interval test. Swap the
-#   sensor for the one in the aluminium plate when the new housing has it,
-#   and re-measure the coefficient -- it belongs to the build.
+# --lid-sensor: the temperature the reading is corrected against. Since
+#   2026-10-11 the DS18B20 in the aluminium plate beside the module, not the
+#   TC ferrule: in the final housing it follows the reading with no lag, door
+#   dips included (hardware/ds18b20-sensors.md).
+# --temp-coeff: 0.048 dpt/C of the plate, from the first 17 h in the final
+#   housing (0.046-0.050 across fits). It belongs to the build -- re-measure
+#   after any rebuild.
 # --mqtt-config: broker and credentials, on the Pi only (mqtt.example.json).
 # --port 80 --port 8080: the bare name, and the old address for old links.
 # --archive-dir: batch folders, copied to the NAS by krausencamera-arkiv.timer.
@@ -37,9 +40,9 @@ ExecStart=/usr/bin/python3 /home/pi/krausencamera/liveview.py \
     --pdaf-model /home/pi/krausencamera/af-model.csv \
     --measure-interval 300 \
     --max-frame-duration-us 33333 \
-    --lid-sensor 28-ef39cb356461 \
+    --lid-sensor 28-713ecb356461 \
     --plate-sensor 28-713ecb356461 \
-    --temp-coeff 0.053 \
+    --temp-coeff 0.048 \
     --mqtt-config /home/pi/krausencamera/mqtt.json \
     --archive-dir /home/pi/arkiv \
     --snapshot-dir /home/pi/frames \

@@ -47,7 +47,11 @@ done
 # 2026-09-23: that rebuild happened -- the new module glued with no preload
 # rails near 25 mm, and 32.40 converges. These are the thirteen heights of its
 # first night (af12, via railjakt.sh), so the second night is comparable.
-AVSTAND="32.40 35.40 38.40 41.40 46.40 52.40 60.40 70.40 82.40 99.40 123.40 158.40 218.40"
+# 2026-10-11, final housing: 110.40, 117.40, 130.40 and 140.40 added. A 75 L
+# fill puts the zero at 117-125 mm, and the old table had a gap from 123.40 to
+# 158.40 -- leave-one-height-out missed 123.40 by 1.9 mm, and the zero is a
+# constant in every height that follows.
+AVSTAND="32.40 35.40 38.40 41.40 46.40 52.40 60.40 70.40 82.40 99.40 110.40 117.40 123.40 130.40 140.40 158.40 218.40"
 REF=123.40
 
 Z=$(python3 -c "
