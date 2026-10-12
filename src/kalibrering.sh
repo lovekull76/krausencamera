@@ -29,12 +29,20 @@ DRY=""
 # at 43 C against 46 everywhere else, and the reference read 24 mdpt low after
 # every such visit (2026-09-23). Capping at 32000 keeps every height at 30 fps.
 EXPOSURES=""
+# Visits and how often the reference comes round. 200 at every third fills
+# 16.7 h; a night that has to fit between the garage door at 17 and at 07
+# wants fewer, and with the drift gone (2026-10-11) a reference every fourth
+# visit still brackets it.
+VISITS=200
+REF_EVERY=3
 while [ $# -gt 0 ]; do
   case "$1" in
     --d0)      D0="$2"; shift 2;;
     --session) SESSION="$2"; shift 2;;
     --dry)     DRY="--dry-run"; shift;;
     --exposures) EXPOSURES="$2"; shift 2;;
+    --visits)  VISITS="$2"; shift 2;;
+    --ref-every) REF_EVERY="$2"; shift 2;;
     *) echo "okant argument: $1"; exit 2;;
   esac
 done
@@ -51,7 +59,12 @@ done
 # fill puts the zero at 117-125 mm, and the old table had a gap from 123.40 to
 # 158.40 -- leave-one-height-out missed 123.40 by 1.9 mm, and the zero is a
 # constant in every height that follows.
-AVSTAND="32.40 35.40 38.40 41.40 46.40 52.40 60.40 70.40 82.40 99.40 110.40 117.40 123.40 130.40 140.40 158.40 218.40"
+# 2026-10-12: 127.40, 135.40 and 145.40 added. The fill level is uncertain by
+# a few litres -- fittings under the cone, the 2" sight glass, the valve bend,
+# sensors reaching in -- and a litre is 5 mm in an F80, so the zero can land
+# anywhere in ~105-145 mm. Night 1 missed 130.40 by -1.4 mm and 140.40 by -0.9,
+# on one height each; a height every 5-7 mm there shows whether that repeats.
+AVSTAND="32.40 35.40 38.40 41.40 46.40 52.40 60.40 70.40 82.40 99.40 110.40 117.40 123.40 127.40 130.40 135.40 140.40 145.40 158.40 218.40"
 REF=123.40
 
 Z=$(python3 -c "
@@ -67,7 +80,7 @@ AF="python3 af_calibrate.py --session $SESSION --request GO --preview 8081 \
 --warmup-interval 300 --warmup-min 30 --warmup-max 100\
 ${EXPOSURES:+ --exposures $EXPOSURES}"
 CAL="python3 autocal.py --d0 $D0 --session $SESSION --request GO \
---interval 300 --visits 200 --zmax 200 --ref $ZREF --ref-every 3 --heights $Z"
+--interval 300 --visits $VISITS --zmax 200 --ref $ZREF --ref-every $REF_EVERY --heights $Z"
 
 echo "d0 = $D0 mm"
 echo "exponeringar: ${EXPOSURES:-af_calibrates standard}"
