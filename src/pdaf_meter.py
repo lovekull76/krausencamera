@@ -84,6 +84,11 @@ class Model:
             if row.get("tillampa_korrektion") == "ja":
                 self.corr_d.append(float(row["d_mm"]))
                 self.corr_mm.append(float(row["korrektion_mm"]))
+        # A height is calibrated if the hyperbola was fitted there or a
+        # reproducing correction covers it. Beyond 130 mm the final housing's
+        # curve steps ~1 mm off the hyperbola, the same both nights, so the
+        # table carries it out to where the zero of a short fill can land.
+        self.valid_max = max([self.fit_max] + self.corr_d)
 
     def distance(self, dpt: float) -> float:
         d = self.b / (dpt - self.a) - self.c
@@ -187,7 +192,7 @@ class PdafMeter:
         self.set_lamp_mode(lamp_always_on)
         log.info("model %s: dpt = %.4f + %.2f/(d + %.4f), fitted to %.0f mm, "
                  "%d corrections applied", model_path, self.model.a, self.model.b,
-                 self.model.c, self.model.fit_max, len(self.model.corr_d))
+                 self.model.c, self.model.valid_max, len(self.model.corr_d))
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -388,7 +393,7 @@ class PdafMeter:
                 r["krausen_mm"] = round(self.zero["d_mm"] - d, 2)
             if now - self._t_start < self._settle_s:
                 r["status"] = "uppvarmning"
-            elif d > self.model.fit_max:
+            elif d > self.model.valid_max:
                 r["status"] = "utanfor_kalibrering"
             else:
                 r["status"] = "ok"

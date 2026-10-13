@@ -1,0 +1,32 @@
+# Krausencamera, AF-kalibrering 2026-10-13
+# slutliga huset, natt 1+2 (af17, af18), korrektion t.o.m. 158.4 mm
+# natter: af17-slutligt-hus-20261011.csv, af18-slutligt-hus-20261012.csv
+# modell:  dpt = -0.1623 + 731.78/(d + 24.1400)
+#   anpassad till hojder <= 130 mm, en nollpunkt per natt
+#   (-0.2085, -0.1623), den sista ovan
+#   drift inom natten borttagen via referensen 123.4 mm: +0.19, +1.45 mdpt/h
+# inom anpassningen: rms 0.272 mm, utelamna-en-hojd 0.325 mm
+# railar vid 24.1 mm (15.0 dpt)
+# Galler DENNA modul och DETTA bygge. Ett ingrepp i kamerastapeln
+# ogiltigforklarar bade modellen och tabellen.
+d_mm,dpt,medelfel_mm,korrektion_mm,n,tillampa_korrektion
+32.40,12.82526,0.016,+0.195,14,ja
+35.40,12.15070,0.022,+0.108,15,ja
+38.40,11.46857,0.058,-0.378,15,ja
+41.40,10.95046,0.036,-0.311,15,ja
+46.40,10.23370,0.028,+0.149,15,ja
+52.40,9.42036,0.024,+0.174,15,ja
+60.40,8.50653,0.020,+0.124,15,ja
+70.40,7.58736,0.031,+0.112,15,ja
+82.40,6.70291,0.027,-0.053,15,ja
+99.40,5.77493,0.055,+0.286,15,ja
+110.40,5.27859,0.106,+0.041,15,ja
+117.40,5.01508,0.053,+0.197,16,ja
+123.40,4.79547,0.023,-0.065,110,ja
+127.40,4.64342,0.075,-0.735,7,ja
+130.40,4.53487,0.053,-1.254,14,ja
+135.40,4.38714,0.061,-1.313,7,ja
+140.40,4.25396,0.196,-1.166,14,ja
+145.40,4.11814,0.076,-1.421,7,ja
+158.40,3.80145,0.112,-2.082,16,ja
+218.40,2.72543,0.210,-10.877,15,nej
