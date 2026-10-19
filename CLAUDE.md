@@ -681,6 +681,100 @@ What separates the two mechanisms is that **temperature is reversible and creep
 is not**. The garage warms through the day; if the reading comes back up, it is
 thermal. The session was left running to find out.
 
+## The final housing (2026-10-10 to 10-19)
+
+The Pi, the buck and the camera in one printed housing: halves bolted with
+M2.5 inserts, a tighter thermal barrier between the Pi cavity and the camera
+cavity, a chimney ducting the heatsink, a service hatch for USB and external
+sensors, the camera turned 180 degrees so the vents face away from splashes,
+an 80 mm camera ribbon looped over the camera board. No weight on top: the
+800 g tried on 10-08 bore on the printed housing and was dropped. Lamp
+resistors 33+33+18 ohm (see the lamp section; ~88 mA expected, not measured).
+
+### Settled, and the plate sensor carries temperature
+
+The first 17 h showed **no settling at all**: plate-corrected trend +0.002 mm/h
+against 0.02-0.06 mm/h in the previous housing. The DS18B20 in the aluminium
+plate follows the reading **with no lag** at **0.048 dpt/C**, door dips
+included -- seven openings on 10-11 moved the raw reading up to 1.3 mm and the
+corrected one by the noise. The service corrects against it since 10-11
+(`--lid-sensor 28-713ecb356461 --temp-coeff 0.048`).
+
+Under two busy cores the SoC reached 79.9 C against 82.0 in the previous
+housing, in air 0.8 C warmer: the chimney is worth ~3 K. The plate sits ~5.5 K
+above the garage air, ~0.4 K less than before.
+
+### Hangs cluster after rebuilds
+
+Three `frontend timed out` in 22 h after the 10-04/05 rebuilds, then none for
+five days with nothing touched. One more at 10-10 22:38, within a second of a
+USB cable being replugged at the hatch -- so **do not touch USB while the
+service runs**. None since, through 10-19, with the new ribbon. Likely
+connectors seating through the first thermal cycle; not proven.
+
+### The calibration: two nights, and a step past 124 mm
+
+`af17` (17 heights, 200 visits) and `af18` (20 heights, 170 visits),
+`calib/af-model-20261013.csv`: `dpt = -0.1623 + 731.78/(d + 24.14)`, rms
+0.27 mm to 130 mm, leave-one-height-out 0.33. Drift inside a night
++0.2 and +1.5 mdpt/h -- the housing has settled.
+
+**Beyond ~124 mm the reading steps 1-2 mm farther than the hyperbola**, both
+nights (130.4: -1.43/-1.02, 140.4: -0.86/-1.57, 158.4: -2.15/-1.98 mm
+correction). It sits exactly where the automatic exposure steps from 15 to
+25 ms, and **that is not the cause**: at a fixed 123.40 mm, 15 against 25 ms
+moved the reading 0.1 mm (`calib/exptest-20261013.csv`, `exptest.sh`). So it
+belongs to the optics or the VCM. The table carries it: corrections applied to
+158.4 mm, and the service now flags `utanfor_kalibrering` only beyond the last
+applied correction (`Model.valid_max`), because a fill a few litres off 75 L
+puts the zero anywhere in ~105-145 mm -- a litre is 5 mm in an F80.
+
+### ⚠️ Never calibrate against a halftone print
+
+Prints of an AI-generated krausen image, at the reference heights:
+
+| target | error at 82-145 mm | in dpt |
+|---|---|---|
+| halftone, paper wavy | -5.5 to -10 mm | ~0.35 |
+| halftone, **flat on steel** | **-5.3 to -10.9 mm** | 0.21-0.36, jumps with height |
+| random 0.3 mm solid dots, wavy | -2.8 to -3.9 | |
+| random 0.3 mm solid dots, flat | -0.6 to -1.8 | **~0.045, constant** |
+| speckle, 0.6-1.2 mm solid dots | 0 by definition | |
+
+A printer's halftone screen aliases on the sparse PDAF pixels and biases the
+phase by a fraction of a dioptre; flat or not, it reads 5-11 mm wrong. Colour
+inks are nearly invisible at 850 nm besides, so a colour print shows only its
+black. Laser-printed paper waves by 3 mm -- glue anything used as a target to a
+plate. The residual 0.045 dpt between two random-dot targets is a hint that
+**texture scale moves PDAF slightly**, which a foam of changing bubble size
+may show as ~1 mm at the fill level.
+
+A 12 h krausen simulation on the dot print (10-14) gave 1.6 mm rms and an
+80 mm peak read as 77.7: heights ~3 % low, most likely that target's bias.
+The September run on the speckle gave 0.5 mm rms. The same run shrugged off a
+5.8 K fall of the plate with the door open.
+
+### Five days at a fixed target: humidity, ~0.07 mm per % RH
+
+10-14 to 10-19, 1444 points, krausen should read 0: **0.15-0.25 mm within each
+day**, against -1.8..+3.4 mm uncorrected. Across the days it slid ~1 mm and
+**follows the garage humidity** (`sensor.ftx_garage_ftx_garage_extract_air_humidity`,
+r = +0.93 with ~6 h lag, 0.06-0.08 mm per % RH); air temperature and time
+explain it less well. **Drier reads farther.** The MDF top under the lid would
+do the opposite (drier, thinner, nearer), and the XPS under the target takes
+up almost no water. Candidates: the plastics in the module -- lens barrel, VCM,
+glue -- where 1 mm here is ~1 um; or something else in the rig. The lamp level
+fell 0.6 % with it, so at least part is a real change of distance. The tank has
+no MDF, so it will tell. Over a 48 h fermentation it is worth ~0.5 mm.
+
+### Next
+
+A zero on a liquid surface has never been tried: a mirror may give no reading,
+or focus on the lid's reflection at twice the distance with nothing to flag
+it. Test with flat, hazy beer in a tray on the stage, a floating scrap of
+speckle as the truth, then with foam. Then a real fermentation: the humidity
+question, bubble size, and whether the sight glass fogs from inside.
+
 ## The instrument in service (2026-09-27 to 10-01)
 
 The service now measures krausen height with PDAF, publishes it to Home
