@@ -273,19 +273,34 @@ $("setin").onclick = () => setRange(idx, idx >= outI ? F.length - 1 : outI);
 $("setout").onclick = () => setRange(idx <= inI ? 0 : inI, idx);
 $("full").onclick = () => setRange(0, F.length - 1);
 
-let timer = null;
+// Buffer like a video player: when a frame is late, wait until BUFFER frames
+// ahead are in and then play on at the chosen rate, instead of stuttering
+// through a link that delivers a little slower than playback eats.
+const BUFFER = 20;
+let timer = null, buffering = false;
+function ready(i) { const im = cache.get(i); return !!im && im.complete; }
 function play(on) {
-  clearInterval(timer); timer = null;
+  clearInterval(timer); timer = null; buffering = false;
   $("play").innerHTML = on ? "&#10074;&#10074; Pause" : "&#9654; Play";
   if (!on) return;
   if (idx < inI || idx >= outI) show(inI);
   timer = setInterval(() => {
-    const next = cache.get(idx + 1);
     if (idx >= outI) { play(false); return; }
-    if (next && !next.complete) {             // wait for the frame rather than skip it
-      $("pos").textContent = (idx + 1) + " / " + F.length + " \u00b7 loading";
-      if (performance.now() - next._t > 4000) load(idx + 1, true);
-      return;
+    if (buffering || !ready(idx + 1)) {
+      const want = Math.min(BUFFER, outI - idx);
+      let have = 0;
+      for (let k = 1; k <= want; k++) {
+        const im = cache.get(idx + k);
+        if (!im) load(idx + k);
+        else if (!im.complete && performance.now() - im._t > 4000) load(idx + k, true);  // stuck: ask again
+        if (!ready(idx + k)) break;
+        have++;
+      }
+      buffering = have < want;
+      if (buffering) {
+        $("pos").textContent = (idx + 1) + " / " + F.length + ` \u00b7 buffering ${have}/${want}`;
+        return;
+      }
     }
     show(idx + 1);
   }, 1000 / +$("speed").value);
