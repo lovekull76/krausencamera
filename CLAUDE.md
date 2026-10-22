@@ -906,6 +906,11 @@ in English -- the internal Swedish states are translated on the way out.
   > because headless Chrome ran with `--allow-file-access-from-files`. Now the
   > export asks for the batch folder once (Chrome/Edge) and checks it is the
   > right batch; served over http it just works.
+- **The page plays half-size copies** (`sma/`, 1152x648, ~130 kB, made by
+  `forhandsbilder.py` in each sync) and the film export reads the originals.
+  The originals are ~1 MB each; over Tailscale the page stalled on them
+  (2026-10-22), since ten frames a second wants 10 MB/s. The sync is capped at
+  `--bwlimit=1500` so a backlog never floods the WiFi.
 - **`index.html` at the share's root**, served by the NAS's own web server
   (Synology Web Station, a name-based virtual host), so a phone reaches it
   without SMB and the Pi carries none of the traffic.

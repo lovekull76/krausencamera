@@ -36,7 +36,13 @@ mkdir -p "$DEST" || exit 1
 # saturated WiFi out of every ten. A camera hang (2026-10-01 12:05) landed in
 # one of those. Frames and recordings never change once written and the logs
 # only grow, so size is enough to tell what is new.
-opts=(-rt --size-only --no-perms --no-owner --no-group --partial --timeout=60)
+# --bwlimit: the first run after forhandsbilder.py arrived had ~500 MB of
+# copies to send, and a whole-archive resend over WiFi coincided with a camera
+# hang once (2026-10-01). 1.5 MB/s still sends a normal ten minutes in seconds.
+opts=(-rt --size-only --no-perms --no-owner --no-group --partial --timeout=60 --bwlimit=1500)
+# Half-size copies for the timelapse page to play, made here from the local
+# frames so the NAS copy arrives with them (forhandsbilder.py).
+[ -d "$SRC" ] && nice -n 19 python3 /home/pi/krausencamera/forhandsbilder.py "$SRC"
 [ -d "$SRC" ] && rsync "${opts[@]}" "$SRC/" "$DEST/"
 [ -d "$LOGS" ] && rsync "${opts[@]}" "$LOGS/" "$DEST/matningar/"
 

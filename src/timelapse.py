@@ -49,7 +49,11 @@ def build(folder: str) -> str:
         m = FRAME_RE.search(p)
         if m:
             t = time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S"))
-            frames.append([f"bilder/{os.path.basename(p)}", int(t)])
+            # Play the half-size copy when there is one (forhandsbilder.py);
+            # the film export reads the original, the third field.
+            name = os.path.basename(p)
+            small = os.path.exists(os.path.join(folder, "sma", name))
+            frames.append([f"sma/{name}" if small else f"bilder/{name}", int(t), f"bilder/{name}"])
     meas = []
     path = os.path.join(folder, "matningar.csv")
     if os.path.exists(path):
@@ -210,12 +214,18 @@ function nearestMeas(t) {           // the measurement closest in time, within 1
 const words = {ok:"", uppvarmning:"warming up", i_halsen:"IN THE NECK",
   utanfor_kalibrering:"beyond calibration", misslyckad:"no focus", morkt:"lamp off"};
 
-// -- frames, with a small preload window so playback does not stall --------
+// -- frames, read ahead so playback does not stall --------------------------
+// The page plays the half-size copies (sma/, ~130 kB); over a slow link 1 MB
+// originals stalled it outright. A request that has not finished after a few
+// seconds is retried, since one stuck image used to stop playback for good.
+const AHEAD = 48;
 const cache = new Map();
-function load(i) {
-  if (i < 0 || i >= F.length || cache.has(i)) return;
-  const im = new Image(); im.src = F[i][0]; cache.set(i, im);
-  if (cache.size > 80) for (const k of cache.keys()) { if (Math.abs(k - i) > 40) cache.delete(k); if (cache.size <= 60) break; }
+function load(i, retry) {
+  if (i < 0 || i >= F.length || (cache.has(i) && !retry)) return;
+  const im = new Image(); im._t = performance.now();
+  im.src = F[i][0] + (retry ? (F[i][0].includes("?") ? "&" : "?") + "r=" + Date.now() : "");
+  cache.set(i, im);
+  if (cache.size > 2 * AHEAD + 40) for (const k of cache.keys()) { if (k < i - 20 || k > i + AHEAD + 20) cache.delete(k); if (cache.size <= 2 * AHEAD) break; }
 }
 function caption(i) {
   const t = F[i][1], m = nearestMeas(t);
@@ -230,7 +240,7 @@ function show(i) {
   if (!F.length) return;
   idx = Math.max(0, Math.min(F.length - 1, i));
   $("img").src = F[idx][0];
-  for (let k = 1; k <= 24; k++) load(idx + k);
+  for (let k = 1; k <= AHEAD; k++) load(idx + k);
   $("slider").value = idx;
   $("pos").textContent = (idx + 1) + " / " + F.length;
   const c = caption(idx);
@@ -272,7 +282,11 @@ function play(on) {
   timer = setInterval(() => {
     const next = cache.get(idx + 1);
     if (idx >= outI) { play(false); return; }
-    if (next && !next.complete) return;       // wait for the frame rather than skip it
+    if (next && !next.complete) {             // wait for the frame rather than skip it
+      $("pos").textContent = (idx + 1) + " / " + F.length + " \u00b7 loading";
+      if (performance.now() - next._t > 4000) load(idx + 1, true);
+      return;
+    }
     show(idx + 1);
   }, 1000 / +$("speed").value);
 }
@@ -383,12 +397,6 @@ addEventListener("resize", draw);
 // MediaRecorder runs in real time, so frames are paced at the chosen rate; the
 // recorder is paused while a frame is still loading from the NAS, so a slow
 // read stretches the recording, not the film.
-function loadImg(i) {
-  load(i);
-  const im = cache.get(i);
-  return im.complete && im.naturalWidth ? Promise.resolve(im)
-    : new Promise((ok, bad) => { im.onload = () => ok(im); im.onerror = bad; });
-}
 function burnCaption(g, i, s) {
   const c = caption(i), big = `600 ${26 * s}px -apple-system, "Segoe UI", sans-serif`,
         mid = `${13 * s}px -apple-system, "Segoe UI", sans-serif`, small = `${12 * s}px -apple-system, "Segoe UI", sans-serif`;
@@ -409,7 +417,10 @@ function burnCaption(g, i, s) {
 // usual.
 let bilderDir = null;
 async function frameSource() {
-  if (location.protocol !== "file:") return i => loadImg(i);
+  // The film uses the originals (third field), not the half-size copies played.
+  if (location.protocol !== "file:") return i => new Promise((ok, bad) => {
+    const im = new Image(); im.onload = () => ok(im); im.onerror = bad; im.src = F[i][2] || F[i][0];
+  });
   if (!window.showDirectoryPicker) return null;
   if (!bilderDir) {
     $("exportmsg").textContent = "Choose this batch's folder (" + D.name + ") so the export can read the frames.";
@@ -423,7 +434,7 @@ async function frameSource() {
     // so check the folder really holds this page's frames, first and last,
     // before recording a film of the wrong fermentation.
     try {
-      for (const f of [F[0], F[F.length - 1]]) await b.getFileHandle(f[0].split("/").pop());
+      for (const f of [F[0], F[F.length - 1]]) await b.getFileHandle((f[2] || f[0]).split("/").pop());
     } catch (e) {
       alert("That folder is not batch " + D.name + " -- its frames are not there. Choose " + D.name + ".");
       return null;
@@ -431,7 +442,7 @@ async function frameSource() {
     bilderDir = b;
   }
   return async i => {
-    const name = F[i][0].split("/").pop();
+    const name = (F[i][2] || F[i][0]).split("/").pop();
     return createImageBitmap(await (await bilderDir.getFileHandle(name)).getFile());
   };
 }
