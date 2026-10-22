@@ -51,8 +51,12 @@ opts=(-rt --size-only --no-perms --no-owner --no-group --partial --timeout=60 --
 while IFS= read -r -d '' bilder; do
   d=$(dirname "$bilder")
   page="$d/timelapse.html"
+  # Also when its half-size copies or the page builder itself are newer: a
+  # finished batch gets neither frames nor measurements, so on 2026-10-22 its
+  # page went on playing the 1 MB originals with the old player.
   if [ ! -f "$page" ] || [ -n "$(find "$bilder" -newer "$page" -name 'A-*.jpg' -print -quit)" ] \
-     || [ "$d/matningar.csv" -nt "$page" ]; then
+     || [ "$d/matningar.csv" -nt "$page" ] || [ /home/pi/krausencamera/timelapse.py -nt "$page" ] \
+     || { [ -d "$d/sma" ] && [ -n "$(find "$d/sma" -newer "$page" -name 'A-*.jpg' -print -quit)" ]; }; then
     python3 /home/pi/krausencamera/timelapse.py "$d" && echo "timelapse: $d"
   fi
 done < <(find "$DEST" -maxdepth 3 -type d -name bilder -print0)
