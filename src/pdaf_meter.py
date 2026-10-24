@@ -157,7 +157,22 @@ class PdafMeter:
         # 0.36 mm rms (2026-09-30). Applied relative to the lid's temperature
         # when the zero was set, so the zero itself is never moved by it.
         self.temp_coeff = temp_coeff
-        self._settle_s = settle_min * 60.0
+        # Warm-up after a start, scaled by how long the camera was off. The 75
+        # minutes are for a cold camera; after a frontend hang the watchdog has
+        # the service back in half a minute, and the first point then read
+        # 0.8 mm off and the second 0.1 (2026-10-23). A heartbeat file touched
+        # every 30 s says when the service last lived; the warm-up is 1.5x the
+        # time it was down, never more than settle_min.
+        self._heartbeat = os.path.join(os.path.dirname(os.path.abspath(zero_path)), "heartbeat")
+        full = settle_min * 60.0
+        try:
+            down = time.time() - os.path.getmtime(self._heartbeat)
+        except OSError:
+            down = float("inf")
+        self._settle_s = min(full, 1.5 * max(down, 0.0))
+        if self._settle_s < full:
+            log.info("down %.1f min since the last heartbeat -- warming %.1f min, not %.0f",
+                     down / 60, self._settle_s / 60, settle_min)
         self._viewers = viewers
         # Batch folders for frames and per-batch logs; without them frame A
         # goes to snapshot_dir as before.
@@ -200,6 +215,18 @@ class PdafMeter:
         self._park()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+        threading.Thread(target=self._beat, daemon=True).start()
+
+    def _beat(self) -> None:
+        """Touch the heartbeat file while the service lives (see __init__)."""
+        while not self._stop.is_set():
+            try:
+                with open(self._heartbeat, "a"):
+                    pass
+                os.utime(self._heartbeat)
+            except OSError as e:
+                log.warning("heartbeat: %s", e)
+            self._stop.wait(30.0)
 
     def stop(self) -> None:
         self._stop.set()

@@ -767,9 +767,35 @@ glue -- where 1 mm here is ~1 um; or something else in the rig. The lamp level
 fell 0.6 % with it, so at least part is a real change of distance. The tank has
 no MDF, so it will tell. Over a 48 h fermentation it is worth ~0.5 mm.
 
+### Beer in a tray: the surface, foam and the end of it (2026-10-23/24)
+
+0.44 L of flat NEIPA, 25 mm deep in a clear 13x17 cm box on the stage, the
+surface ~115 mm below the lid by geometry. The empty box read 144.0 mm -- the
+speckle seen through its clear bottom -- so a reading through the beer would
+land there.
+
+- **Still beer with a few bubbles reads its surface**: 115.3 mm, two points
+  0.005 dpt apart once the ripples from placing it died. Never near 144.
+- **Milk-frothed foam, ~10 mm**, read 8.6 mm at the first point and fell
+  smoothly to the zero in three minutes. No jump when the last foam went.
+  `niva` follows the foam: 148 under foam, ~50-70 on the bare surface.
+- **Overnight a bubble skin read +2-3 mm, and as it broke up into sparse
+  islands the reading humped to +5-7.7 mm** (03:35-06:00) -- more than any
+  bubble stands proud. Sparse, small, high-contrast features read near, the
+  same direction as the halftone print. Expect a small false hump as real
+  krausen collapses, on a curve that has already fallen tens of millimetres.
+- **A fully clear surface fails, visibly** (`misslyckad` from 09:31): no
+  texture, no value -- not the bottom, not a guess. So the zero needs some
+  bubbles or foam on the wort to be set; a glassy fill has to wait for them.
+
+Two frontend hangs that night (02:23, 05:00) and one the morning before
+(08:13), after twelve days with none; each back in half a minute. Cause
+unknown. They are why the warm-up now scales with downtime.
+
 ### Next
 
-A zero on a liquid surface has never been tried: a mirror may give no reading,
+A zero on a liquid surface has now been tried, see above.
+Before that: a mirror may give no reading,
 or focus on the lid's reflection at twice the distance with nothing to flag
 it. Test with flat, hazy beer in a tray on the stage, a floating scrap of
 speckle as the truth, then with foam. Then a real fermentation: the humidity
@@ -798,7 +824,7 @@ conditions the table was measured under:
 The exception is a viewer: while someone watches, the lens holds the last
 focus, and it parks when the last one leaves -- never during a recording.
 
-States: `uppvarmning` for the first 75 min after start, `i_halsen` at the rail
+States: `uppvarmning` after a start, for 1.5x the time the service was down and at most 75 min (a `heartbeat` file beside `zero.json`, touched every 30 s, says when it last lived -- so a 30 s watchdog restart costs no points), `i_halsen` at the rail
 (surface nearer than ~25 mm), `utanfor_kalibrering` beyond 130 mm,
 `misslyckad`, `morkt` if the lamp was forced off. Each point goes to
 `matningar/matning-YYYYMMDD.csv` with the lid temperature.
