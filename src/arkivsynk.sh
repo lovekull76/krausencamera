@@ -40,33 +40,58 @@ mkdir -p "$DEST" || exit 1
 # copies to send, and a whole-archive resend over WiFi coincided with a camera
 # hang once (2026-10-01). 1.5 MB/s still sends a normal ten minutes in seconds.
 opts=(-rt --size-only --no-perms --no-owner --no-group --partial --timeout=60 --bwlimit=1500)
-# Half-size copies for the timelapse page to play, made here from the local
-# frames so the NAS copy arrives with them (forhandsbilder.py).
-[ -d "$SRC" ] && nice -n 19 python3 /home/pi/krausencamera/forhandsbilder.py "$SRC"
-[ -d "$SRC" ] && rsync "${opts[@]}" "$SRC/" "$DEST/"
+
+# Only what is new since the last run. Walking the whole archive -- the local
+# frames, the NAS copy, every batch's page check and the start page -- every
+# ten minutes kept ~15k CIFS and ~10k ext4 inodes in the kernel's caches: 70 MB
+# of slab on a Pi with ~170 MB outside CMA. On 2026-10-24 that ended in an OOM
+# kill, the camera service was swapped out to 2.4 MB resident, and frontend
+# timeouts went from none in twelve days to one every five hours, starting the
+# day the half-size copies doubled the file count. A frame that cannot be
+# dequeued within a second because its thread is waiting on swap is exactly a
+# frontend timeout.
+MARK=/home/pi/krausencamera/.arkivsynk-senast
+STAMP=$(mktemp); NEW=$(mktemp); trap 'rm -f "$STAMP" "$NEW"' EXIT
+since=(); [ -f "$MARK" ] && since=(-newer "$MARK")
+
+# New files only ever appear in the open batch, or in today's utan-batch when
+# none is open, so after the first run only those are searched. The first run
+# (no mark) takes everything.
+scope=(.)
+if [ -f "$MARK" ]; then
+  bid=$(python3 -c 'import json; print(json.load(open("/home/pi/krausencamera/batch.json"))["id"])' 2>/dev/null)
+  scope=()
+  for d in "$bid" "utan-batch/$(date +%F)"; do [ -n "$d" ] && [ -d "$SRC/$d" ] && scope+=("./$d"); done
+fi
+if [ -d "$SRC" ] && [ ${#scope[@]} -gt 0 ]; then
+  # Half-size copies of the new frames, so they travel with them.
+  (cd "$SRC" && find "${scope[@]}" -type f -path '*/bilder/A-*.jpg' "${since[@]}" -print0) \
+    | (cd "$SRC" && xargs -0 -r nice -n 19 python3 /home/pi/krausencamera/forhandsbilder.py)
+  (cd "$SRC" && find "${scope[@]}" -type f "${since[@]}" -print) > "$NEW"
+  [ -s "$NEW" ] && rsync "${opts[@]}" --files-from="$NEW" "$SRC/" "$DEST/"
+fi
 [ -d "$LOGS" ] && rsync "${opts[@]}" "$LOGS/" "$DEST/matningar/"
 
-# A timelapse page in every folder on the NAS that has frames newer than its
-# page. Built against the NAS copy, so it lists frames already pruned here.
-while IFS= read -r -d '' bilder; do
-  d=$(dirname "$bilder")
-  page="$d/timelapse.html"
-  # Also when its half-size copies or the page builder itself are newer: a
-  # finished batch gets neither frames nor measurements, so on 2026-10-22 its
-  # page went on playing the 1 MB originals with the old player.
-  if [ ! -f "$page" ] || [ -n "$(find "$bilder" -newer "$page" -name 'A-*.jpg' -print -quit)" ] \
-     || [ "$d/matningar.csv" -nt "$page" ] || [ /home/pi/krausencamera/timelapse.py -nt "$page" ] \
-     || { [ -d "$d/sma" ] && [ -n "$(find "$d/sma" -newer "$page" -name 'A-*.jpg' -print -quit)" ]; }; then
-    python3 /home/pi/krausencamera/timelapse.py "$d" && echo "timelapse: $d"
-  fi
-done < <(find "$DEST" -maxdepth 3 -type d -name bilder -print0)
+# Pages only for the batches that got something new -- or every one, when the
+# page builder itself is newer than the last run.
+if [ ! -f "$MARK" ] || [ /home/pi/krausencamera/timelapse.py -nt "$MARK" ]; then
+  find "$DEST" -maxdepth 3 -type d -name bilder -printf '%h\n'
+else
+  sed -E 's#^\./##; /\/(bilder|sma|video)\//{s#/(bilder|sma|video)/.*##;b}; s#/[^/]*$##' "$NEW" | sort -u \
+    | while read -r b; do [ -d "$DEST/$b/bilder" ] && echo "$DEST/$b"; done
+fi | sort -u | while read -r d; do
+  python3 /home/pi/krausencamera/timelapse.py "$d" && echo "timelapse: $d"
+done
 
-# The start page at the root of the share, for the NAS's web server.
+# The start page; it re-reads only batches whose page changed (arkivindex.py).
 python3 /home/pi/krausencamera/arkivindex.py "$NAS" || echo "startsidan kunde inte skrivas"
+mv "$STAMP" "$MARK"; STAMP=
 
-# Prune the local copy. Today's files are still being appended to, and a file
-# is only removed once the NAS has one of the same size.
-if [ -d "$SRC" ]; then
+# Prune the local copy once a day rather than every run, for the same reason.
+# Today's files are still being appended to, and a file is only removed once
+# the NAS has one of the same size.
+PRUNED=/home/pi/krausencamera/.arkivsynk-rensat
+if [ -d "$SRC" ] && [ -z "$(find "$PRUNED" -mmin -1440 2>/dev/null)" ]; then
   n=0
   while IFS= read -r -d '' f; do
     rel=${f#"$SRC"/}
@@ -77,5 +102,6 @@ if [ -d "$SRC" ]; then
   done < <(find "$SRC" -type f -mtime +"$KEEP_DAYS" -print0)
   find "$SRC" -mindepth 1 -type d -empty -delete
   [ "$n" -gt 0 ] && echo "rensade $n lokala filer aldre an $KEEP_DAYS dagar"
+  touch "$PRUNED"
 fi
 echo "synkat till $DEST"

@@ -789,8 +789,23 @@ land there.
   bubbles or foam on the wort to be set; a glassy fill has to wait for them.
 
 Two frontend hangs that night (02:23, 05:00) and one the morning before
-(08:13), after twelve days with none; each back in half a minute. Cause
-unknown. They are why the warm-up now scales with downtime.
+(08:13), after twelve days with none; each back in half a minute. They are
+why the warm-up now scales with downtime.
+
+> **Then ten in two days, and the likely cause was mine.** Temperature fitted
+> for a day and then failed: hangs came at 22.2 C too. What fitted was memory.
+> An OOM kill on 2026-10-24 17:01, the camera service swapped out to 2.4 MB
+> resident, and 70 MB of slab -- 13 MB of `cifs_inode_cache`, 11 MB of
+> `ext4_inode_cache` -- in the ~170 MB that CMA leaves. Every ten minutes the
+> archive sync walked every frame locally and on the NAS, built every batch's
+> page check and re-read every batch for the start page, and the half-size
+> copies of 2026-10-22 doubled the file count the day before the hangs began.
+> A camera thread waiting on swap cannot dequeue a frame within a second,
+> which is what a frontend timeout is. Since 2026-10-25 the sync is
+> incremental (a mark file; only the open batch is searched; pages only for
+> batches with something new; the start page caches its summaries; pruning
+> once a day): 3 s against ~70 s, and a few dozen inodes against ~25 000.
+> Watch whether the hangs stop.
 
 ### Next
 

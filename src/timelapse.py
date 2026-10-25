@@ -45,6 +45,12 @@ def num(v):
 
 def build(folder: str) -> str:
     frames = []
+    # One listing of sma/ rather than a stat per frame: over CIFS every stat
+    # pins an inode in the kernel's cache, and this runs every ten minutes.
+    try:
+        small_names = set(os.listdir(os.path.join(folder, "sma")))
+    except OSError:
+        small_names = set()
     for p in sorted(glob.glob(os.path.join(folder, "bilder", "A-*.jpg"))):
         m = FRAME_RE.search(p)
         if m:
@@ -52,7 +58,7 @@ def build(folder: str) -> str:
             # Play the half-size copy when there is one (forhandsbilder.py);
             # the film export reads the original, the third field.
             name = os.path.basename(p)
-            small = os.path.exists(os.path.join(folder, "sma", name))
+            small = name in small_names
             frames.append([f"sma/{name}" if small else f"bilder/{name}", int(t), f"bilder/{name}"])
     meas = []
     path = os.path.join(folder, "matningar.csv")

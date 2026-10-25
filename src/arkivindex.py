@@ -82,7 +82,42 @@ def row(rel, name, s, sub=False):
             + (f'<div class="vids">{vids}</div>' if vids else "") + "</li>")
 
 
+CACHE = os.path.expanduser("~/krausencamera/.arkivindex-cache.json")
+
+
+def cached(folder, cache):
+    """summarise(), skipped while the folder's page is unchanged. Listing every
+    frame of every batch over CIFS every ten minutes kept ~15k inodes in the
+    kernel's caches on a Pi with ~170 MB outside CMA (2026-10-25)."""
+    try:
+        stamp = os.path.getmtime(os.path.join(folder, "timelapse.html"))
+    except OSError:
+        return summarise(folder)
+    c = cache.get(folder)
+    if c and c.get("stamp") == stamp:
+        return c["s"]
+    s = summarise(folder)
+    cache[folder] = {"stamp": stamp, "s": s}
+    return s
+
+
 def build(root, live_url="http://krausenlive/"):
+    import json
+    try:
+        cache = json.load(open(CACHE))
+    except (OSError, ValueError):
+        cache = {}
+    try:
+        return _build(root, live_url, cache)
+    finally:
+        try:
+            with open(CACHE, "w") as f:
+                json.dump(cache, f)
+        except OSError:
+            pass
+
+
+def _build(root, live_url, cache):
     sections = []
     for dev in sorted(d for d in os.listdir(root)
                       if os.path.isdir(os.path.join(root, d)) and not d.startswith((".", "#", "@"))):
@@ -95,10 +130,10 @@ def build(root, live_url="http://krausenlive/"):
         if not batches and not loose:
             continue
         items = [row(f"{dev}/{b}", f"{b[:10]} {b[11:13]}:{b[13:15]}{b[15:]}",
-                     summarise(os.path.join(base, b)))
+                     cached(os.path.join(base, b), cache))
                  for b in batches]
         items += [row(f"{dev}/utan-batch/{os.path.basename(d)}", "no batch · " + os.path.basename(d),
-                      summarise(d), sub=True) for d in loose]
+                      cached(d, cache), sub=True) for d in loose]
         sections.append(f'<section><h2>{html.escape(dev)}</h2><ul>{"".join(items)}</ul></section>')
     body = "".join(sections) or '<p class="empty">No batches yet.</p>'
     return (PAGE.replace("{body}", body).replace("{made}", time.strftime("%Y-%m-%d %H:%M"))

@@ -47,9 +47,16 @@ def main() -> int:
     args = ap.parse_args()
     made = 0
     for root in args.roots:
-        for bilder in glob.glob(os.path.join(root, "**", "bilder"), recursive=True):
-            out = os.path.join(os.path.dirname(bilder), SUB)
-            for p in sorted(glob.glob(os.path.join(bilder, "A-*.jpg"))):
+        # A frame itself, as arkivsynk.sh passes the new ones; otherwise a
+        # folder to search. Walking the whole archive every ten minutes kept
+        # thousands of inodes in the kernel's caches (2026-10-25).
+        if os.path.isfile(root):
+            pairs = [(os.path.join(os.path.dirname(os.path.dirname(root)), SUB), [root])]
+        else:
+            pairs = [(os.path.join(os.path.dirname(b), SUB), sorted(glob.glob(os.path.join(b, "A-*.jpg"))))
+                     for b in glob.glob(os.path.join(root, "**", "bilder"), recursive=True)]
+        for out, frames in pairs:
+            for p in frames:
                 q = os.path.join(out, os.path.basename(p))
                 if os.path.exists(q):
                     continue
