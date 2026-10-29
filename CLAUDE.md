@@ -805,7 +805,13 @@ why the warm-up now scales with downtime.
 > incremental (a mark file; only the open batch is searched; pages only for
 > batches with something new; the start page caches its summaries; pruning
 > once a day): 3 s against ~70 s, and a few dozen inodes against ~25 000.
-> Watch whether the hangs stop.
+>
+> **They stopped.** None in the 21 h after the change, none in 3.6 days after
+> a reboot on 2026-10-26 -- against one every five hours before, so ~20
+> expected. Slab 50 MB after those days (`cifs_inode_cache` 3 MB against 13),
+> 122 MB available, no OOM. The lesson: on this Pi the camera needs memory
+> headroom more than anything else, and a background job that walks the
+> archive can take it away silently.
 
 ### Next
 
