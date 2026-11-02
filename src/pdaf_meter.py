@@ -469,8 +469,17 @@ class PdafMeter:
 
     def _snapshot(self, dpt: float | None) -> None:
         """Frame A: lamp lit, exposure locked, focused on the surface just
-        measured -- then parked again unless someone is watching."""
-        from PIL import Image
+        measured -- then parked again unless someone is watching.
+
+        Encoded straight from the camera's own buffer, which lives in CMA.
+        Copying it out cost ~25 MB of ordinary memory in one burst -- five
+        12 MB frames and a 9 MB RGB copy -- at the moment the stream restarts
+        after a measurement, and three of five frontend timeouts on 2026-11-01
+        and 02 landed within that second. The bytes go out in the same order
+        as before (BGRX: byte 2 is red) and with PIL's 4:2:0 chroma, so the
+        archive does not change."""
+        import simplejpeg
+        from picamera2 import MappedArray
         picam2 = self._picam2
         with self._cam:
             self._lamp.acquire()
@@ -482,19 +491,28 @@ class PdafMeter:
                 picam2.set_controls(ctl)
                 time.sleep(1.6 if self.lamp_always_on else max(1.6, self.LAMP_LEAD_S))
                 for _ in range(4):
-                    picam2.capture_array("main")
-                a = picam2.capture_array("main")
+                    picam2.capture_metadata()
+                req = picam2.capture_request()
             finally:
                 self._lamp.release()
                 picam2.set_controls(dict(self._restore))
                 if self._viewers() == 0:
                     self._park()
+        try:
+            with MappedArray(req, "main") as m:
+                jpeg = simplejpeg.encode_jpeg(m.array, quality=self._snap_quality,
+                                              colorspace="BGRX",
+                                              colorsubsampling="420")
+                mean = float(m.array[::8, ::8, :3].mean())
+        finally:
+            req.release()
         stamp = time.strftime("%Y%m%d-%H%M%S")
         folder = self.batches.dir("bilder") if self.batches else self._snap_dir
         path = os.path.join(folder, f"A-{stamp}.jpg")
-        Image.fromarray(a[:, :, :3][:, :, ::-1]).save(path, quality=self._snap_quality)
+        with open(path, "wb") as f:
+            f.write(jpeg)
         log.info("frame A -> %s (%.0f mean, focus %s)", os.path.basename(path),
-                 a[:, :, :3].mean(), f"{dpt:.2f} dpt" if dpt else "parked")
+                 mean, f"{dpt:.2f} dpt" if dpt else "parked")
 
     def _run(self) -> None:
         log.info("pdaf meter: a point every %.0f s, frame A every %.0f s; "

@@ -1,0 +1,13 @@
+[Unit]
+Description=Krausencamera: log memory, swap and the service's resident size every minute
+# See src/minneslogg.sh.
+
+[Service]
+User=pi
+ExecStart=/bin/bash /home/pi/krausencamera/minneslogg.sh
+Restart=always
+RestartSec=60
+Nice=19
+
+[Install]
+WantedBy=multi-user.target

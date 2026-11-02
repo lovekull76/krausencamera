@@ -812,6 +812,22 @@ why the warm-up now scales with downtime.
 > 122 MB available, no OOM. The lesson: on this Pi the camera needs memory
 > headroom more than anything else, and a background job that walks the
 > archive can take it away silently.
+>
+> **Back on 2026-11-01**: five in 30 h, after six clean days, one only 11 min
+> after a watchdog restart. Slab was normal this time (53 MB), and so was
+> `MemAvailable` (111 MB) -- but only ~24 MB of it lay outside CMA, the
+> service sat two thirds in swap, and every point swapped ~20 MB back in.
+> **Three of the five came within the second frame A was written**, a ~3 s
+> window in 300; the other two as `man-db` and `apt-daily` started. Frame A
+> copied five 12 MB frames and a 9 MB RGB image out of the camera at the
+> moment the stream restarts after a point. Since 2026-11-02 09:24 it waits
+> out the settling frames with `capture_metadata()` and JPEG-encodes straight
+> from the CMA buffer with simplejpeg (same channel order, same 4:2:0, ~830 kB
+> as before); `man-db.timer` is masked. `krausencamera-minne.service` logs
+> memory, swap and the service's resident size every minute to
+> `~/krausencamera/minne/`, because the journal lives in RAM and the clean
+> days had left nothing to compare against. No reboot alongside, so the
+> result is attributable.
 
 ### Next
 
