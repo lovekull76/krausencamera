@@ -145,6 +145,20 @@ class PdafMeter:
         self._snap_quality = snapshot_quality
         self._last_snap = 0.0
         self._zero_path = zero_path
+        # The interval can be changed from HA -- sparser once the krausen has
+        # fallen -- and is kept beside the zero so a restart does not undo it.
+        # Frame A follows it, so the timelapse thins out with the points.
+        self._interval_path = os.path.join(os.path.dirname(os.path.abspath(zero_path)),
+                                           "intervall.json")
+        self._wake = threading.Event()
+        try:
+            with open(self._interval_path) as f:
+                saved = float(json.load(f)["s"])
+            log.info("interval %.0f s from %s, not %.0f", saved,
+                     os.path.basename(self._interval_path), interval_s)
+            self._interval = self._snap_interval = saved
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
         self._log_dir = log_dir
         self._lid_sensor = lid_sensor
         # The DS18B20 in housing v2's aluminium plate. Logged beside the lid
@@ -230,8 +244,35 @@ class PdafMeter:
 
     def stop(self) -> None:
         self._stop.set()
+        self._wake.set()
         if self._thread:
             self._thread.join(timeout=30.0)
+
+    # -- interval ----------------------------------------------------------
+
+    INTERVAL_MIN_S, INTERVAL_MAX_S = 120.0, 3600.0
+
+    @property
+    def interval_s(self) -> float:
+        return self._interval
+
+    def set_interval(self, seconds: float) -> float:
+        """Points and frame A every `seconds`, from now on and after a restart.
+
+        Takes effect on the running wait: shortened past what has already
+        elapsed, the next point is taken at once. Returns the interval set,
+        clamped to 2-60 minutes.
+        """
+        s = min(self.INTERVAL_MAX_S, max(self.INTERVAL_MIN_S, float(seconds)))
+        if s != self._interval:
+            log.info("interval %.0f -> %.0f s (points and frame A)", self._interval, s)
+        self._interval = self._snap_interval = s
+        tmp = self._interval_path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"s": s}, f)
+        os.replace(tmp, self._interval_path)
+        self._wake.set()
+        return s
 
     # -- lamp --------------------------------------------------------------
 
@@ -562,4 +603,11 @@ class PdafMeter:
                     log.critical("camera has failed %d times in a row -- exiting "
                                  "so systemd can restart it", self._fails)
                     os._exit(17)
-            self._stop.wait(max(0.0, self._interval - (time.monotonic() - t0)))
+            # Woken by set_interval, the remaining wait is worked out again
+            # against the new interval rather than restarted.
+            while not self._stop.is_set():
+                left = self._interval - (time.monotonic() - t0)
+                if left <= 0:
+                    break
+                self._wake.wait(left)
+                self._wake.clear()

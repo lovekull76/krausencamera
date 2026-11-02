@@ -810,7 +810,8 @@ def main() -> int:
             ha = HaMqtt(mqtt_cfg, on_zero=tracker.set_zero,
                         on_batch=tracker.new_batch,
                         on_record=lambda on: recorder.start() if on else recorder.stop(),
-                        interval_s=args.measure_interval)
+                        on_interval=lambda s: ha.publish_interval(tracker.set_interval(s)),
+                        interval_s=tracker.interval_s)
             tracker.listeners.append(ha.publish)
             recorder.listeners.append(ha.publish_recording)
             ha.start()
@@ -841,11 +842,15 @@ def main() -> int:
                      args.af_interval, args.af_threshold)
 
     if tracker is not None:
-        # Report a stall well before the watchdog acts on it: two missed
-        # points and a minute of grace.
-        stall_s = (2 * args.measure_interval + 60) if args.pdaf_model else None
+        # Both limits follow the interval, which HA can change while running:
+        # a stall is reported after two missed points and a minute of grace,
+        # and the process exits after three and two minutes.
+        def limits():
+            if args.pdaf_model:
+                return 2 * tracker.interval_s + 60, 3 * tracker.interval_s + 120
+            return None, max(args.af_interval, args.snapshot_interval) * 3 + 120
 
-        def watchdog(t, period):
+        def watchdog(t):
             """Exit if the camera stops producing, even without raising.
 
             The tracker's own failure counter needs an exception. A wedged CSI
@@ -874,6 +879,7 @@ def main() -> int:
                 if n % 6:
                     continue
                 idle = time.time() - t.last_ok
+                stall_s, period = limits()
                 if ha is not None and stall_s:
                     stalled = idle > stall_s
                     if stalled != last:
@@ -884,11 +890,8 @@ def main() -> int:
                                  "(limit %.0f) -- exiting for a restart", idle, period)
                     _os._exit(17)
 
-        period = (max(args.measure_interval, args.snapshot_interval) if args.pdaf_model
-                  else max(args.af_interval, args.snapshot_interval)) * 3 + 120
-        threading.Thread(target=watchdog, args=(tracker, period),
-                         daemon=True).start()
-        log.info("watchdog: exit if no cycle completes within %.0f s", period)
+        threading.Thread(target=watchdog, args=(tracker,), daemon=True).start()
+        log.info("watchdog: exit if no cycle completes within %.0f s", limits()[1])
 
     ports = args.port or [8080]
     extra = [Server(("", p), Handler) for p in ports[1:]]

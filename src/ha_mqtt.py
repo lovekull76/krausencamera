@@ -8,6 +8,8 @@
     krausencamera/<id>/cmd/record ON | OFF           never retained
     krausencamera/<id>/recording  ON | OFF           the switch's state, on change
     krausencamera/<id>/stalled    ON | OFF           from the watchdog, not the meter
+    krausencamera/<id>/cmd/interval  minutes         never retained
+    krausencamera/<id>/interval   minutes            the number's state, on change
     homeassistant/device/<id>/config                 retained, device discovery
 
 **One availability for the whole device.** Device discovery puts every entity
@@ -56,7 +58,7 @@ STATUSES = list(STATUS_EN.values())
 
 class HaMqtt:
     def __init__(self, cfg: dict, *, device_id: str | None = None,
-                 on_zero=None, on_batch=None, on_record=None,
+                 on_zero=None, on_batch=None, on_record=None, on_interval=None,
                  interval_s: float = 300.0) -> None:
         import paho.mqtt.client as mqtt
 
@@ -70,8 +72,12 @@ class HaMqtt:
         self._host = cfg["host"]
         self._port = int(cfg.get("port", 1883))
         self._keepalive = int(cfg.get("keepalive", 30))
-        # three missed points before HA calls a value stale
-        self._expire = int(cfg.get("expire_after", 3 * interval_s))
+        # three missed points before HA calls a value stale -- worked out again
+        # whenever the interval changes, unless the config fixes it
+        self._expire_fixed = cfg.get("expire_after")
+        self._interval = interval_s
+        self._on_interval = on_interval
+        self.t_interval = f"{self.base}/interval"
         self._on_zero = on_zero
         self._on_batch = on_batch
         self._on_record = on_record
@@ -155,6 +161,15 @@ class HaMqtt:
             log.info("mqtt: new batch requested")
             if self._on_batch:
                 self._on_batch()
+        elif msg.topic == f"{self.t_cmd}/interval":
+            log.info("mqtt: interval %s min requested", payload)
+            try:
+                minutes = float(payload)
+            except ValueError:
+                log.warning("mqtt: interval %r is not a number", payload)
+                return
+            if self._on_interval:
+                self._on_interval(minutes * 60.0)
 
     # -- publishing --------------------------------------------------------
 
@@ -165,6 +180,20 @@ class HaMqtt:
             self._c.publish(self.t_state, last, qos=1, retain=False)
         self._c.publish(self.t_rec, self._recording, qos=1, retain=False)
         self._c.publish(self.t_stall, self._stalled, qos=1, retain=False)
+        self._c.publish(self.t_interval, f"{self._interval / 60:g}", qos=1, retain=False)
+
+    @property
+    def _expire(self) -> int:
+        return int(self._expire_fixed or 3 * self._interval)
+
+    def publish_interval(self, seconds: float) -> None:
+        """The interval in force. A new one changes how long HA waits before
+        calling a value stale, so discovery goes out again with it."""
+        changed = seconds != self._interval
+        self._interval = seconds
+        if changed:
+            self._discovery()
+        self._c.publish(self.t_interval, f"{seconds / 60:g}", qos=1, retain=False)
 
     def publish_stalled(self, stalled: bool) -> None:
         """Set by the service's watchdog thread, not by the measurement.
@@ -212,6 +241,9 @@ class HaMqtt:
         with self._lock:
             self._last = text
         self._c.publish(self.t_state, text, qos=1, retain=False)
+        # With every point too: a newly discovered number can subscribe after
+        # the one sent on connect has gone by, and then sits unknown.
+        self._c.publish(self.t_interval, f"{self._interval / 60:g}", qos=1, retain=False)
 
     def _discovery(self) -> None:
         i, exp = self.id, self._expire
@@ -268,6 +300,11 @@ class HaMqtt:
                     "icon": "mdi:record-rec",
                     "cmd_t": f"{self.t_cmd}/record", "stat_t": self.t_rec,
                     "pl_on": "ON", "pl_off": "OFF", "ret": False},
+            "intervall": {"p": "number", "unique_id": f"{i}_intervall",
+                          "name": "Measurement interval", "icon": "mdi:timer-outline",
+                          "cmd_t": f"{self.t_cmd}/interval", "stat_t": self.t_interval,
+                          "min": 2, "max": 60, "step": 1, "unit_of_meas": "min",
+                          "mode": "box", "ent_cat": "config", "ret": False},
             "nybatch": {"p": "button", "unique_id": f"{i}_nybatch",
                         "name": "Start new batch",
                         "cmd_t": f"{self.t_cmd}/batch", "pl_prs": "PRESS",

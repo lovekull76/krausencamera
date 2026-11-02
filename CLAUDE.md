@@ -947,6 +947,14 @@ in English -- the internal Swedish states are translated on the way out.
   process and its MQTT link alive, and HA saw nothing until expiry.
 - Buttons *Start new batch*, *Set zero at fill level*, switch *Recording*.
   **Retained commands are refused** -- they would re-run on every reconnect.
+- Number *Measurement interval*, 2-60 min (from 2026-11-02): points **and
+  frame A** at that interval, so the timelapse thins out with them -- for
+  measuring sparser once the krausen has fallen. Kept in `intervall.json`
+  beside `zero.json`, so a restart keeps it; without the file the service
+  runs at `--measure-interval`. `expire_after`, *Measurement stalled* and the
+  watchdog all follow it. Not yet used: it waits until the frame A fix of the
+  same day has shown whether it stopped the hangs, since fewer frame A would
+  muddle that.
 
 ### The archive: batches, NAS, timelapse
 
