@@ -21,7 +21,16 @@ ssh krausencamera 'journalctl -u krausencamera --since -12h | grep "frame A"'
 Raspberry Pi OS keeps the journal in RAM (`Storage=volatile`), where avahi's
 noise pushed it past its ~8 MB cap in about a day -- so a hang found the next
 morning had no log left. `journald-50-persistent.conf` keeps it on the SD card,
-200 MB, which is about three weeks at ~8 MB a day:
+200 MB.
+
+The noise itself was the UniFi gateway's device identification: once a minute
+it multicasts one query for every service type it has seen, from port 38055
+rather than 5353, so avahi treats it as a legacy unicast query -- and the
+answer for `_workstation._tcp` does not fit one packet. Five warnings a
+minute, ~8 MB of journal a day. It has nothing to do with UniFi's mDNS
+forwarding, which was switched off without effect. `publish-workstation=no`
+in `/etc/avahi/avahi-daemon.conf` (2026-11-15) silenced it; `krausencamera.local`
+still resolves.
 
 ```bash
 scp systemd/journald-50-persistent.conf krausencamera:/tmp/
