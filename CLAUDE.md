@@ -828,6 +828,18 @@ why the warm-up now scales with downtime.
 > `~/krausencamera/minne/`, because the journal lives in RAM and the clean
 > days had left nothing to compare against. No reboot alongside, so the
 > result is attributable.
+>
+> **It held.** Two restarts in 13 days (11-06 15:24, 11-12 08:13), each back
+> within a minute and not one point lost -- 3811 points, no gap over seven
+> minutes. Neither came under memory pressure: 125-136 MB available, no
+> swap-in in the minutes before. About the October background rate, then,
+> and not the memory mechanism; the cause is unknown because the journal had
+> already gone. It is kept on the SD card since 2026-11-15
+> (`systemd/journald-50-persistent.conf`, 200 MB), which also frees the up to
+> 8 MB it held in tmpfs. Still to watch: slab creeps ~1 MB a day (60 -> 73 MB,
+> `cifs_inode_cache` back at 9 MB), and `apt-daily-upgrade` swaps the service
+> out every morning at ~06:00 -- harmless so far, the first to mask if hangs
+> return.
 
 ### Next
 

@@ -16,6 +16,20 @@ ssh krausencamera 'journalctl -u krausencamera -f'
 ssh krausencamera 'journalctl -u krausencamera --since -12h | grep "frame A"'
 ```
 
+## Keep the journal
+
+Raspberry Pi OS keeps the journal in RAM (`Storage=volatile`), where avahi's
+noise pushed it past its ~8 MB cap in about a day -- so a hang found the next
+morning had no log left. `journald-50-persistent.conf` keeps it on the SD card,
+200 MB, which is about three weeks at ~8 MB a day:
+
+```bash
+scp systemd/journald-50-persistent.conf krausencamera:/tmp/
+ssh krausencamera 'sudo mkdir -p /etc/systemd/journald.conf.d \
+  && sudo mv /tmp/journald-50-persistent.conf /etc/systemd/journald.conf.d/50-persistent.conf \
+  && sudo systemctl restart systemd-journald && sudo journalctl --flush'
+```
+
 ## What restarts what
 
 Two watchdogs, because they catch different failures:
