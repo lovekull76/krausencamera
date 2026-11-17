@@ -840,6 +840,12 @@ why the warm-up now scales with downtime.
 > `cifs_inode_cache` back at 9 MB), and `apt-daily-upgrade` swaps the service
 > out every morning at ~06:00 -- harmless so far, the first to mask if hangs
 > return.
+>
+> **Not a hang: 29 h off the WiFi** from 2026-11-16 15:28. One failed
+> handshake after a roam, and NetworkManager gave up for good (no-secrets);
+> the camera measured on locally throughout. `krausencamera-wifivakt.service`
+> reconnects it now -- see `systemd/README.md`. A frontend timeout 4 min after
+> the power cycle that ended it, recovered in 20 s.
 
 ### Next
 

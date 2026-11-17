@@ -1,0 +1,14 @@
+[Unit]
+Description=Krausencamera: reconnect the WiFi when NetworkManager has given up
+# See src/wifivakt.sh.
+After=NetworkManager.service
+
+[Service]
+ExecStart=/bin/bash /home/pi/krausencamera/wifivakt.sh
+Restart=always
+RestartSec=60
+Nice=19
+SyslogIdentifier=krausencamera-wifivakt
+
+[Install]
+WantedBy=multi-user.target

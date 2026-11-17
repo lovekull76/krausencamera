@@ -39,6 +39,23 @@ ssh krausencamera 'sudo mkdir -p /etc/systemd/journald.conf.d \
   && sudo systemctl restart systemd-journald && sudo journalctl --flush'
 ```
 
+## Keep the WiFi
+
+On 2026-11-16 the Pi roamed to another access point, the handshake there
+failed once, and NetworkManager -- wanting a new key and having no one to ask
+-- marked the connection failed and never retried. 29 hours off the network
+while the camera went on measuring locally, until a power cycle.
+`krausencamera-wifivakt.service` checks wlan0 once a minute and runs
+`nmcli device connect wlan0` after two misses in a row. Tested 2026-11-17 by
+disconnecting it: back in 90 s, MQTT a minute later (its backoff).
+
+```bash
+scp src/wifivakt.sh krausencamera:~/krausencamera/
+scp systemd/krausencamera-wifivakt.service krausencamera:/tmp/
+ssh krausencamera 'sudo mv /tmp/krausencamera-wifivakt.service /etc/systemd/system/ \
+  && sudo systemctl daemon-reload && sudo systemctl enable --now krausencamera-wifivakt'
+```
+
 ## What restarts what
 
 Two watchdogs, because they catch different failures:
