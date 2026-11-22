@@ -12,18 +12,21 @@ so the folder can be moved or copied whole.
 
 `arkivsynk.sh` runs this against the NAS copy after every sync, for folders
 with frames newer than their page, so the page always lists everything on the
-NAS -- including frames already pruned from the Pi.
+NAS -- including frames already pruned from the Pi. On the Pi the list comes
+from its register of what it has sent (arkivregister.py) rather than a listing
+of the NAS; anywhere else the folder is listed.
 """
 
 from __future__ import annotations
 
 import csv
-import glob
 import json
 import os
 import re
 import sys
 import time
+
+import arkivregister
 
 FRAME_RE = re.compile(r"A-(\d{8})-(\d{6})\.jpg$")
 
@@ -45,23 +48,21 @@ def num(v):
 
 def build(folder: str) -> str:
     frames = []
-    # One listing of sma/ rather than a stat per frame: over CIFS every stat
-    # pins an inode in the kernel's cache, and this runs every ten minutes.
-    try:
-        small_names = set(os.listdir(os.path.join(folder, "sma")))
-    except OSError:
-        small_names = set()
-    for p in sorted(glob.glob(os.path.join(folder, "bilder", "A-*.jpg"))):
-        m = FRAME_RE.search(p)
+    # From the Pi's register of what the NAS holds, not by listing the NAS:
+    # over CIFS every entry pins an inode in the kernel's cache, this runs
+    # every ten minutes, and an open batch grows by ~300 frames a day
+    # (arkivregister.py).
+    small_names = set(arkivregister.names(folder, "sma"))
+    for name in arkivregister.names(folder, "bilder"):
+        m = FRAME_RE.match(name)
         if m:
             t = time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S"))
             # Play the half-size copy when there is one (forhandsbilder.py);
             # the film export reads the original, the third field.
-            name = os.path.basename(p)
             small = name in small_names
             frames.append([f"sma/{name}" if small else f"bilder/{name}", int(t), f"bilder/{name}"])
     meas = []
-    path = os.path.join(folder, "matningar.csv")
+    path = arkivregister.local_copy(folder, "matningar.csv")
     if os.path.exists(path):
         with open(path) as f:
             for r in csv.DictReader(l for l in f if not l.startswith("#")):
@@ -70,7 +71,7 @@ def build(folder: str) -> str:
                     meas.append([int(t), num(r.get("krausen_mm")), num(r.get("d_mm")),
                                  r.get("status", "")])
     zeros = []
-    path = os.path.join(folder, "nollningar.csv")
+    path = arkivregister.local_copy(folder, "nollningar.csv")
     if os.path.exists(path):
         with open(path) as f:
             for r in csv.DictReader(f):

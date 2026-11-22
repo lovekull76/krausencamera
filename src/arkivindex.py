@@ -25,6 +25,8 @@ import re
 import sys
 import time
 
+import arkivregister
+
 FRAME_RE = re.compile(r"A-(\d{8})-(\d{6})\.jpg$")
 
 
@@ -34,10 +36,11 @@ def frame_time(name):
 
 
 def summarise(folder):
-    frames = sorted(os.path.basename(p) for p in glob.glob(os.path.join(folder, "bilder", "A-*.jpg")))
+    # The register, not a listing of the NAS (arkivregister.py).
+    frames = [f for f in arkivregister.names(folder, "bilder") if FRAME_RE.match(f)]
     times = [t for t in (frame_time(f) for f in frames) if t]
     peak, zeros = None, 0
-    path = os.path.join(folder, "matningar.csv")
+    path = arkivregister.local_copy(folder, "matningar.csv")
     if os.path.exists(path):
         with open(path) as f:
             for r in csv.DictReader(l for l in f if not l.startswith("#")):
@@ -47,11 +50,11 @@ def summarise(folder):
                     continue
                 if k == k and r.get("status") == "ok":
                     peak = k if peak is None else max(peak, k)
-    path = os.path.join(folder, "nollningar.csv")
+    path = arkivregister.local_copy(folder, "nollningar.csv")
     if os.path.exists(path):
         with open(path) as f:
             zeros = max(0, sum(1 for _ in f) - 1)
-    videos = sorted(os.path.basename(p) for p in glob.glob(os.path.join(folder, "video", "*.mp4")))
+    videos = [v for v in arkivregister.names(folder, "video") if v.endswith(".mp4")]
     return {"frames": len(frames), "t0": min(times) if times else None,
             "t1": max(times) if times else None, "peak": peak, "zeros": zeros,
             "videos": videos, "page": os.path.exists(os.path.join(folder, "timelapse.html"))}

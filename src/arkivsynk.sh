@@ -68,7 +68,9 @@ if [ -d "$SRC" ] && [ ${#scope[@]} -gt 0 ]; then
   (cd "$SRC" && find "${scope[@]}" -type f -path '*/bilder/A-*.jpg' "${since[@]}" -print0) \
     | (cd "$SRC" && xargs -0 -r nice -n 19 python3 /home/pi/krausencamera/forhandsbilder.py)
   (cd "$SRC" && find "${scope[@]}" -type f "${since[@]}" -print) > "$NEW"
-  [ -s "$NEW" ] && rsync "${opts[@]}" --files-from="$NEW" "$SRC/" "$DEST/"
+  # The register of what the NAS holds, so the pages below never list it.
+  [ -s "$NEW" ] && rsync "${opts[@]}" --files-from="$NEW" "$SRC/" "$DEST/" \
+    && python3 /home/pi/krausencamera/arkivregister.py add < "$NEW"
 fi
 [ -d "$LOGS" ] && rsync "${opts[@]}" "$LOGS/" "$DEST/matningar/"
 

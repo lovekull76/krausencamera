@@ -846,6 +846,21 @@ why the warm-up now scales with downtime.
 > the camera measured on locally throughout. `krausencamera-wifivakt.service`
 > reconnects it now -- see `systemd/README.md`. A frontend timeout 4 min after
 > the power cycle that ended it, recovered in 20 s.
+>
+> **Then one a day, every one inside an archive sync.** Five in 2026-11-17 to
+> 22, each 3-35 s after `krausencamera-arkiv` started -- a ~13 s window in 600,
+> five times of five. Not memory this time: 125-135 MB available and almost no
+> swap-in in the minute before any of them. What had grown was the open batch,
+> the rig series since the beer test of 2026-10-24: 8428 frames and as many
+> copies, which every sync listed over CIFS twice (the page and the start
+> page) and whose 660 kB CSV it read from the NAS, to rebuild one page. The
+> incremental sync of 2026-10-25 had made the copying O(new) but left that
+> O(batch). Since 2026-11-22 21:05 `arkivregister.py` keeps a local register
+> of what each batch has on the NAS and the CSVs are read from the Pi's own
+> copy; the page comes out identical (checked against a listing-built one).
+> The 880 kB page is still written every sync. The batch was kept open on
+> purpose, so the test runs at full size: at one a day, a clean week would be
+> ~0.1 % by chance.
 
 ### Next
 
