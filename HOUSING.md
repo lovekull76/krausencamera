@@ -33,9 +33,11 @@ ends up at 0.5.
 
 ## Give the camera's heat a way out, through metal
 
-**An aluminium plate between the module and the sight glass steel**, with
-thermal paste on both faces, carries the camera's heat into the lid instead of
-shutting it into the housing:
+**An aluminium plate between the module and the sight glass**, with thermal
+paste between the module's metal face and the plate, carries the camera's heat
+into the lid instead of shutting it into the housing. The plate sits on the
+sight glass without paste. Nothing printed lies between the camera and the
+fermenter:
 
 | | before | with the plate |
 |---|---|---|
@@ -85,15 +87,19 @@ load. Output droops 2.8 % from cold, over ~20 min.
   none for five days. Do not read anything into hangs in the first days of a
   new build.
 
-## Printed parts creep, so let a new build run in
+## Keep printed parts out of the optical path
 
 ABS-GF creeps much faster at 40–46 °C than at room temperature, and it is only
 that warm while the camera runs. The build that held the module glued in a
 printed shim settled at ~0.1 mm/h, decaying over days of *operating* time, not
-clock time. The final housing showed no settling from its first 17 hours. Give
-a new build a few days of running before its calibration is taken. A fresh
-print also relaxes over its first days; annealing it before final fitting
-shortens that.
+clock time. In the final housing nothing printed lies between the camera and
+the fermenter: the module sits on the aluminium plate, and the printed housing
+only sits on top of it, where creep does not matter. It showed no settling
+from its first 17 hours, +0.002 mm/h against 0.02–0.06 before. That points to
+the shim, not the module, as what was settling.
+
+So: metal from the module to the sight glass, and printed parts only where
+they carry nothing the reading depends on.
 
 ## Every rebuild costs a calibration
 

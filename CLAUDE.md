@@ -700,6 +700,14 @@ included -- seven openings on 10-11 moved the raw reading up to 1.3 mm and the
 corrected one by the noise. The service corrects against it since 10-11
 (`--lid-sensor 28-713ecb356461 --temp-coeff 0.048`).
 
+> **No printed part between the camera and the fermenter** (Love,
+> 2026-11-22). Thermal paste between the module's metal face and the plate;
+> the plate sits on the sight glass without paste; the printed housing only
+> sits on top of the plate, where its creep carries nothing. That answers
+> "What was settling is not settled" below: the operating-time settling of
+> build E, with the module glued in a printed ABS-GF shim, is gone in a
+> build with no shim. It was the shim, not the module.
+
 Under two busy cores the SoC reached 79.9 C against 82.0 in the previous
 housing, in air 0.8 C warmer: the chimney is worth ~3 K. The plate sits ~5.5 K
 above the garage air, ~0.4 K less than before.
