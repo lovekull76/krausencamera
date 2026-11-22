@@ -1,84 +1,115 @@
 # What the housing has to provide
 
-Requirements derived from measurements on the test rig, for the redesign. Every
-number here came out of a measurement rather than a specification, and each says
-what it is protecting against.
+Requirements for building the housing of a PDAF unit: the Pi, the buck and the
+camera in one printed body on the sight glass. Every item came out of a
+measurement, not a specification, and each says what it protects against. The
+dates point into [`CLAUDE.md`](CLAUDE.md), where the data is.
 
-## Laser baseline: 12 mm
+The housing is part of the instrument. Focus is read in dioptres, and at the
+fill level one dioptre is ~30 mm, so the module moving by a few micrometres
+against its lens or warming by a degree shows up in the reading. Almost every
+requirement below is about keeping the module still and its temperature
+predictable.
 
-The dot's image radius and the tube mouth's both scale as `offset / distance`,
-so their ratio is fixed at `b/R`. With a 19 mm tube radius, a 15 mm baseline puts
-the dot's maximum at 79 % of the ring — a 21 % gap that a tilted TC gasket eats
-into, and that the spot's own width eats further at close range.
+## Hold the module flat, without force
 
-At 12 mm the gap is 37 %. The cost is precision, which scales directly with the
-baseline: measured repeatability goes from 47 µm to about 59 µm against the
-brief's 300–500 µm target. Six times the margin becomes five.
+**Support the module so it cannot hang on its own tape.** The Camera Module 3's
+sensor-and-lens package is held to its PCB by thick double-sided tape. Looking
+straight down, it creeps off under its own weight and hinges away on its flex.
+It was found visibly detached on 2026-09-10, after days of drift that had been
+blamed on everything else. A printed shim under the package cut the drift
+forty-fold. Every housing needs one, built into the printed part.
 
-**Search window.** Set the upper bound at `r_max = f·b / L`, with L the tube
-mouth's distance. It is a constant in the rigid camera-laser frame, computed
-once, and it excludes the ring without any per-frame fitting. Tilt would have to
-reach roughly 6° before the ring intruded.
+**But do not press on it.** Over four rebuilds the near end of the focus range
+moved outwards with every remount, from 37 to 62 mm from the lid. The build
+with by far the most force on the module lost the most range. A new module
+mounted with no preload reached 24.8 mm, inside the tank's 35 mm shoulder
+(2026-09-15 to 27). Pressure may damage a module permanently; that is
+suggested, not measured.
 
-## A defined seat for the camera board
+**A thermal pad is 0.3 mm thin for about a day after it was compressed.** Draw
+the stack against a relaxed pad, or a shim designed for 0.1 mm of compression
+ends up at 0.5.
 
-The dot's vertical offset moved +56, +37, +63 px across three mountings. In the
-image that is the principal point's apparent position; mechanically it is the
-board landing differently in its play, 1.5–2 mm.
+## Give the camera's heat a way out, through metal
 
-Vertical play is harmless — it is the cross axis, and the measurement uses the
-horizontal position. **Play along the baseline is not**, because it changes `b`
-and therefore the whole calibration. A seat, a pin, anything that makes the board
-land the same way twice.
+**An aluminium plate between the module and the sight glass steel**, with
+thermal paste on both faces, carries the camera's heat into the lid instead of
+shutting it into the housing:
 
-Worth logging the vertical offset anyway: it costs nothing and it is a free
-indicator that the mounting has shifted, which warns that the horizontal may
-have moved too.
+| | before | with the plate |
+|---|---|---|
+| camera at equilibrium | 56.0 °C | **40.0 °C** |
+| optical wander while warming up | ~0.44 dpt | **0.177 dpt** |
+| warm-up | 43–65 min | 71 min |
 
-## Contain the laser's stray light
+The warm-up gets longer because the plate is mass. What matters is that the
+excursion more than halves. A plate turned to a tight guide fit in the sight
+glass housing, its flange resting on the rim, also locates the camera.
 
-The ghost — the laser's own aperture reflected in a liquid surface — measured as
-bright as the real return, 51 against 51. Brightness is therefore useless as a
-selection criterion, and the ghost's angle moves with the surface tilt so it
-cannot be excluded geometrically either.
+**A DS18B20 in a pocket in the plate, beside the module.** In the final housing
+it follows the reading with no lag, door openings included, and the service
+corrects every reading against it. A sensor on the lid's TC ferrule was ten
+minutes out of step with the reading; one in the air around it, nearly an
+hour. See
+[`hardware/ds18b20-sensors.md`](hardware/ds18b20-sensors.md).
 
-The present bore is 3 mm across and 10 mm long, which passes everything within
-17° of the beam. A longer bore, a smaller exit aperture, and a second baffle
-would cut it. Check first whether the beam is grazing the bore: if it is,
-alignment fixes more than blackening will, since the beam must exit regardless.
+## Keep the Pi's heat away from the camera
 
-## Frame B's exposure must scale with distance
+**A thermal barrier between the Pi's cavity and the camera's**, and a
+**chimney ducting the Pi's heatsink** to the outside. The chimney is worth
+~3 K at the SoC under load.
 
-The return grows as `1/d²`, so a fixed exposure is wrong somewhere in the range
-by construction. The dot saturated from 12 ms all the way down to 800 µs, and at
-the tube mouth it would be 19 times brighter still than at rest level.
+## The lamp: limit its current, keep it lit
 
-A saturated spot blooms, and its apparent width is then set by the exposure
-rather than the optics — which is exactly where it matters, because a wide spot
-at close range is what closes the gap to the ring. Scale by `d²` from the
-previous cycle's reading.
+Three 850 nm LEDs (Vishay TSHG5410) from 12 V. The datasheet allows 100 mA
+continuous. 2 × 33 Ω measured 110 mA, so the final housing has 33 + 33 + 18 Ω,
+~88 mA expected but not yet measured.
 
-## Somewhere for the LED heat to go
+**The lamp's heat moves the reading 0.7 mm.** It stays lit all the time, as it
+was during calibration, so it is a constant heat source rather than one that
+switches with viewers. The housing has to be designed around that constant
+load. Output droops 2.8 % from cold, over ~20 min.
 
-Three 850 nm LEDs at 114 mA potted in a rod dropped 2.83 % in output between cold
-and settled, half of it inside two minutes and the rest over twenty. That is
-roughly 28 °C of package rise with no conduction path out.
+## Mechanical
 
-It does not affect the height measurement, which is taken with the lamp off. It
-does affect frame A's brightness, and it is the reason `was_lit_for` is logged
-with every reading.
+- **Nothing heavy on top.** An 800 g weight tried on 2026-10-08 bore on the
+  printed housing and was dropped.
+- **Vents facing away from splashes.** The final housing turns the camera
+  180° to get there.
+- **A service hatch for USB and external sensors**, but do not touch USB while
+  the service runs. A replugged cable coincided to the second with a camera
+  hang on 2026-10-10.
+- **Ribbon and connectors seem to seat through the first thermal cycle.**
+  Three camera hangs came in the 22 h after the rebuilds of 2026-10-04/05, then
+  none for five days. Do not read anything into hangs in the first days of a
+  new build.
 
-## The optical parts are part of the calibration
+## Printed parts creep, so let a new build run in
 
-The 1.5 mm aperture, the laser, and the camera board together define `f·b`, the
-principal point and the ring's radius. **Any of them moving invalidates the
-calibration table**, so they need to be rigid with respect to each other, and the
-aperture in particular has to be centred before the table is measured rather than
-after.
+ABS-GF creeps much faster at 40–46 °C than at room temperature, and it is only
+that warm while the camera runs. The build that held the module glued in a
+printed shim settled at ~0.1 mm/h, decaying over days of *operating* time, not
+clock time. The final housing showed no settling from its first 17 hours. Give
+a new build a few days of running before its calibration is taken. A fresh
+print also relaxes over its first days; annealing it before final fitting
+shortens that.
 
-## The numbers change, the procedures do not
+## Every rebuild costs a calibration
 
-A redesign invalidates every figure in this file. It does not invalidate the way
-they were obtained: `laser_align` for the baseline geometry and the principal
-point, `focus_sweep` for the focus table, `laser_spots` for the returns and the
-artefacts. A full recalibration is an evening's work.
+The calibration belongs to one module in one housing. The sight glass alone
+moves the apparent surface 2.75 mm nearer (8 mm of glass, n = 1.52), and the
+remount itself moves the rail. After any rebuild, take all three:
+
+- **The table:** one unattended night on the stage (`kalibrering.sh`,
+  `autocal.py`, `afmodell.py`).
+- **The temperature coefficient:** a night's natural swing is enough to fit it.
+- **The rail:** find it with `railjakt.sh`, to confirm the near range still
+  reaches the neck.
+
+---
+
+The previous version of this file listed requirements for the laser design:
+baseline, stray light from the laser bore, frame B's exposure and a seat for
+the camera board. The laser came out on 2026-10-03. That version is in the git
+history, `git log -- HOUSING.md`.

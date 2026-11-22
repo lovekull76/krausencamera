@@ -1,5 +1,33 @@
 # Krausen camera — handover brief
 
+This is the brief the project started from, on 2026-09-02, kept as it was
+written. The purpose and the optical geometry still hold. The measuring
+principle does not. [`README.md`](README.md) describes the system as built,
+and [`CLAUDE.md`](CLAUDE.md) holds the measurements behind every departure.
+
+## What became of it
+
+| the brief asked for | as built | why |
+|---|---|---|
+| height by laser triangulation | height by the camera's **phase-detect autofocus**, the lens position in dioptres against a calibrated model; laser removed 2026-10-03 | the camera–laser geometry crept by tens of pixels over days, and clear liquid returned the vessel bottom with nothing to flag it; PDAF held still |
+| fixed focus, found by a sweep | autofocus once per measurement, the lens **parked at 0 dpt** in between | the focus *is* the measurement; a lens held off its rest position heats the module and drifted the reading 4.9 mm |
+| locked exposure, so brightness can be measured | exposure chosen per point and capped at 32 ms for the measurement; **locked** for frame A | nothing is measured from brightness; frame A stays locked so the timelapse does not pump |
+| frames A and B per cycle | frame A only, every 5 min by default, 2–60 min from Home Assistant | frame B existed for the laser |
+| one frame a minute to the NAS | frames written locally, copied to the NAS by a separate timer | the measurement must never wait on the network |
+| live view in Home Assistant | live view served by the Pi itself, plus H.264 recording | Home Assistant stays out of the image path |
+| a calibration table against known water levels | a hyperbola plus a tabulated correction, measured on a **motorised stage**, one night per build, then a **zero at each fill** | a stage can return to a height, which separated camera drift from rig error; the zero turns height into a difference |
+| Raspberry Pi 3B+ | Raspberry Pi Zero 2 W in one housing with the camera | |
+| IR LED cast in a PMMA rod | 3 × 850 nm LED, lit continuously | switching the lamp moved the reading 0.7 mm |
+
+What the brief got right and still applies: nothing enters the tank, 850 nm
+light only, picamera2 from apt, one video configuration in the 2×2 binned
+mode, never compute what can be calibrated, and the fill as the reference
+level for every batch.
+
+---
+
+# The original brief
+
 ## What is to be built
 
 A camera mounted in the lid of a Brewtools F80 fermenter, looking straight down
