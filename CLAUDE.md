@@ -84,95 +84,202 @@ sudo apt update && sudo apt install -y python3-picamera2
 > preview stack and is not needed for headless operation, but cannot be
 > deselected.
 
-## ✅ Power supply: solved
+## Workflow
 
-**Solution: MeanWell 5.1 V / 15 W directly on the GPIO pins.** No micro-USB.
+Develop locally in this folder → deploy with `rsync` over SSH → run as a systemd
+service on the Pi. No sshfs/Samba mount: slow and fragile over WiFi.
 
-Final verification 2026-09-02 22:53, booted with `throttled=0x0`:
-
-```
-Idle 40s                     under-voltage:  0/20
-1 core, 20s                  under-voltage:  0/10   arm=1400MHz  49.4'C
-2 cores, 20s                 under-voltage:  0/10   arm=1399MHz  55.8'C
-3 cores, 20s                 under-voltage:  0/10   arm=1200MHz  60.1'C
-4 cores, 30s                 under-voltage:  0/15   arm=1200MHz  65.5'C
-Camera alone 2304x1296 60s   under-voltage:  0/30   arm=600MHz   48.3'C
-Camera + 2 cores, 60s        under-voltage:  0/30   arm=1200MHz  60.1'C
-4 cores + camera, 60s        under-voltage:  0/30   arm=1200MHz  68.8'C
+```bash
+rsync -avz --exclude '.git' --exclude '__pycache__' ./src/ krausencamera:~/krausencamera/
 ```
 
-Final state `0x80000` — bit 19 only (*soft temp limit has occurred*).
-**No under-voltage bit set at all**, and 0 voltage lines in `dmesg`.
+> **Never `--delete` here.** The Pi's `~/krausencamera` also holds what only
+> exists there: `mqtt.json` (credentials), `zero.json` (the fill-level zero),
+> `af-model.csv` (the model the service reads), `matningar/` (every
+> measurement) and the calibration sessions. `--delete` would remove all of it,
+> because none of it is in `src/`.
 
-### What the fault actually was
+## Architecture (settled 2026-09-02)
 
-| Setup | Idle | Under load |
+Departs from the brief on one point: **no MJPEG camera in HASS.**
+
+| Channel | Content | Consumer |
 |---|---|---|
-| Original cable + PSU | **95.6 %** under-voltage, 600 MHz | — |
-| New cable + same PSU | 0 % | under-voltage, one 53 s episode |
-| Bench supply via bad micro-USB stub, 1 A limit | ~10 % | — |
-| Bench supply on GPIO pins, **1 A limit** | 0 % | **died at 4 cores** |
-| Bench supply on GPIO pins, 5.1 A limit | 0 % | under-voltage at 4 cores |
-| **MeanWell 5.1 V/15 W on pins** | **0 %** | **clean throughout** |
+| **MQTT** (discovery) | krausen height in mm, values to log | HASS |
+| **Web view on the Pi** | live image, opened from phone or browser | a human, on demand |
+| **NAS (SMB)** | one frame per minute, archive | later analysis |
 
-Three independent faults, all in the supply path — never in the power supply's
-rating:
+HASS is not in the image path at all — only the data path.
 
-1. **The original cable, ~1.5 Ω.** Computed from a 0.45 V drop at 0.3 A. The
-   dominant fault.
-2. **The bench supply's 1 A limit** (the default on the spare slot). A Pi 3B+
-   draws ~300 mA on average but has WiFi transients of 1.5–2 A. At 1 A the
-   supply entered constant-current mode.
-3. **The bench leads, ~0.39 Ω.** Only visible once the limit was raised to 5.1 A.
+## The instrument in service (2026-09-27 to 10-01)
 
-**Diagnostic tip:** resistive drop *warns first* (`Undervoltage detected`, clock
-reduction, recovery). A current limit collapses straight through brownout
-**without a word in the log**. Silent death under load ⇒ suspect the current
-limit, not the cable.
+The service now measures krausen height with PDAF, publishes it to Home
+Assistant, archives frames and recordings to the NAS, and builds a timelapse
+page per batch. Site-specific names and addresses are in `LOCAL.md`.
 
-### Thermal: heatsink fitted 2026-09-02 23:19
+### Measuring in service: the calibration's conditions, kept
 
-Standard RPi heatsink. Same ramp, same MeanWell supply, directly comparable:
+`pdaf_meter.py` replaces the laser ranging (`focus_tracker.py`, void
+constants). Every 300 s it takes one point with `af_calibrate`'s own
+`pick_exposure` and `take_point`, not a reimplementation, and holds the
+conditions the table was measured under:
 
-| Stage | Without heatsink | With heatsink |
-|---|---|---|
-| 1 core | 49.4 °C · 1400 MHz · 0/10 | 46.2 °C · 1400 MHz · 0/10 |
-| 2 cores | 55.8 °C · 1399 MHz · 0/10 | 52.6 °C · 1400 MHz · 0/10 |
-| 3 cores | 60.1 °C · 1200 MHz · **4/10** | 58.5 °C · **1399 MHz** · **0/10** |
-| 4 cores | 65.5 °C · 1200 MHz · 14/15 | 62.8 °C · 1199 MHz · 12/15 |
-| Camera alone | 48.3 °C · 0/30 | 49.4 °C · 0/30 |
-| **Camera + 2 cores** | 60.1 °C · 1200 MHz · **7/30** | 59.1 °C · **1399 MHz** · **1/30** |
-| 4 cores + camera | 68.8 °C · 1200 MHz · 30/30 | 67.1 °C · 1199 MHz · 29/30 |
+| | why |
+|---|---|
+| **30 fps throughout** | exposures capped at 32 ms, and the live view's frame capped at 33.3 ms (`--max-frame-duration-us 33333`); a slower frame cools the sensor |
+| **lamp lit continuously** | measured below: it moves the reading 0.7 mm |
+| **lens parked at 0 dpt** between points | the VCM's holding current heats the module |
+| **lores 1280×720** in both | `af_calibrate` takes `LORES_SIZE` from `liveview`; the current model was taken at 1024×576 -- AF statistics come from the sensor before scaling, but it is a difference to know about |
 
-**Result:** the realistic workload (camera + 2 cores) now runs at full clock
-essentially all the time — 1/30 versus 7/30, and a minimum clock of 1399 rather
-than 1200 MHz. Three cores became entirely throttle-free.
+The exception is a viewer: while someone watches, the lens holds the last
+focus, and it parks when the last one leaves -- never during a recording.
 
-**But the gain is only 2–3 °C, and constant across every load step.** That means
-the dominant thermal resistance is not chip→heatsink but **heatsink→air**. At
-4 cores it is still limited 12/15 — the heatsink saturates without air movement.
+States: `uppvarmning` after a start, for 1.5x the time the service was down and at most 75 min (a `heartbeat` file beside `zero.json`, touched every 30 s, says when it last lived -- so a 30 s watchdog restart costs no points), `i_halsen` at the rail
+(surface nearer than ~25 mm), `utanfor_kalibrering` beyond 130 mm,
+`misslyckad`, `morkt` if the lamp was forced off. Each point goes to
+`matningar/matning-YYYYMMDD.csv` with the lid temperature.
 
-⚠️ Consequence for the enclosure: 3 °C of margin is eaten by a sealed body.
-**A bigger heatsink inside the box does not fix this** — it meets the same
-saturated heatsink→air resistance. What actually helps is a **conduction path
-out of the enclosure**: a thermal pad from the SoC/heatsink to the body wall,
-preferably towards the sight glass or a metal part with contact to the outside.
+### The lamp moves the reading 0.7 mm, so it stays on
 
-**The cheapest fix, though, is software:** the live view is only needed on
-demand. Serving it that way rather than running a continuous stream removes the
-system's only sustained load — and then the operating case is camera alone,
-49.4 °C, nowhere near the limit.
+`lamptest.sh`, 2026-09-28/29: four rounds of two hours, lamp held on against lit
+only to measure, target fixed at 123.40 mm.
 
-### Throttled bit reference
+```
+d = a - 1.07 mm/C * lid - 0.447 +- 0.023 mm * (lamp always on)
+lid +0.26 C with the lamp always on
+```
 
-| Value | Bits | Meaning |
-|---|---|---|
-| `0x0` | — | healthy |
-| `0x50005` | 0, 2, 16, 18 | under-voltage *now* + throttled *now* + has occurred |
-| `0xd0008` | 3, 16, 18, 19 | soft temp limit *now*, voltage event has occurred |
-| `0x80000` | 19 | temp limit only has occurred — voltage has been clean |
+About 0.28 mm through the lid temperature and 0.45 mm more that the ferrule
+sensor does not see -- the lamp warms something nearer the camera. Far over the
+0.1 mm threshold set before the test. The calibration was taken with it on, and
+a lamp switched by viewers would be a varying heat source in the middle of a
+fermentation.
 
-Sticky bits are cleared only by a reboot. Odd low hex digit ⟺ bit 0 set.
+### Temperature compensation: 0.053 dpt/C of the lid
+
+`--temp-coeff 0.053` with `--lid-sensor` on the TC ferrule. The raw dpt is
+corrected by the coefficient times the lid's change **since the zero was set**;
+the zero stores the uncorrected distance and its lid temperature, so a re-zero
+is exact. Without a zero nothing is corrected. The log keeps the raw `dpt`;
+`d_mm` and `krausen_mm` are corrected.
+
+Checked after the fact on the simulation below with the coefficient from the
+independent interval test: rms over 249 points **1.24 -> ~0.36 mm**, the tail
+after the run -1.78 -> ~-0.35 mm. Live, the first night after zeroing, target
+still: **-0.06 +- 0.10 mm** corrected against +0.22 +- 0.13 uncorrected.
+
+> Swap the sensor for the one in the new housing's aluminium plate, and
+> **re-measure the coefficient** -- it belongs to the build.
+
+### Fit the working range, not the whole table
+
+`afmodell.py` fits `dpt = a_s + b/(d + c)` with one offset per night and a
+shared shape, **over heights up to 130 mm only**. Including 158 mm misses it
+by 2.6 mm and takes the rms inside the range from 0.22 to 0.78 mm: the curve
+leaves the hyperbola beyond ~125 mm. Heights beyond are tabulated.
+
+It matters at the zero. A 75 L fill puts the surface 117-125 mm below the lid,
+and the zero is a constant in every height that follows. Leave-one-height-out
+gives 0.1-0.5 mm inside the range but **1.9 mm at 123.40**, the last height
+before a gap to 158. The stage check confirmed it: krausen within 1.2 mm of
+the truth everywhere, the error being the model reading +1 mm at the zero
+height. **The next table wants heights at ~110, 117, 130 and 140 mm**, so the
+fill level sits inside the data instead of on its edge.
+
+### A fermentation played on the stage
+
+`krausensim.py`, 2026-09-29: batch and zero from Home Assistant, then the stage
+walked a curve `h = H (t/tp)^k exp(k(1 - t/tp))` -- 80 mm at 4 h, 12 h long.
+
+```
+143 points against the truth    mean -0.20 mm   rms 0.50   extremes -1.27 / +1.03
+peak                            truth 80.0      measured 80.2
+rising +0.10 mm, falling -0.35 -- the night cooled
+```
+
+Afterwards, stage back at the fill level, the reading sat at -1.8 mm: the lid
+was 0.8 C cooler than at the zero. That is what the compensation above
+removes.
+
+### Home Assistant over MQTT
+
+`ha_mqtt.py`, device discovery (HA 2024.11+), names in English because HA runs
+in English -- the internal Swedish states are translated on the way out.
+
+- **One availability for the device**: LWT `offline` retained; the service says
+  `offline` itself on a clean stop (SIGTERM is turned into a shutdown); an
+  unclean death fires the will.
+- **Nothing stale shown as fresh**: state is **not retained** (HA cannot tell a
+  retained message's age), every sensor has `expire_after` 900 s, heights are
+  null unless the point is valid, and *Last measurement* is the heartbeat --
+  unchanged values do not update HA's "last changed", so watch that one.
+- **HA restarting** (`homeassistant/status online`): discovery and the last
+  point re-sent after 5 s.
+- **Measurement stalled**: a binary sensor set by the watchdog thread, not the
+  meter, after 11 min without a point. On 2026-09-29 the camera hung with the
+  process and its MQTT link alive, and HA saw nothing until expiry.
+- Buttons *Start new batch*, *Set zero at fill level*, switch *Recording*.
+  **Retained commands are refused** -- they would re-run on every reconnect.
+- Number *Measurement interval*, 2-60 min (from 2026-11-02): points **and
+  frame A** at that interval, so the timelapse thins out with them -- for
+  measuring sparser once the krausen has fallen. Kept in `intervall.json`
+  beside `zero.json`, so a restart keeps it; without the file the service
+  runs at `--measure-interval`. `expire_after`, *Measurement stalled* and the
+  watchdog all follow it. Not yet used: it waits until the frame A fix of the
+  same day has shown whether it stopped the hangs, since fewer frame A would
+  muddle that.
+
+### The archive: batches, NAS, timelapse
+
+- **A batch is a folder** `~/arkiv/<YYYY-MM-DD_HHMM>/` with `bilder/`,
+  `matningar.csv`, `nollningar.csv`, `video/`. **Batch and zero are separate**:
+  a batch may be zeroed several times (before and after pitching, or once a
+  skin of foam gives focus something to hold), every zero is logged and every
+  row carries the zero it was computed against. A new batch clears the zero.
+- **The service writes only locally.** `krausencamera-arkiv.timer` rsyncs to the
+  NAS every 10 min (automount, `nofail`, `soft`), and prunes local files older
+  than 14 days only when the NAS holds a copy of the same size. Nothing is ever
+  deleted on the NAS. **Never `rsync --delete` into `~/krausencamera`** -- see
+  Workflow.
+- **`timelapse.html` per batch**, built against the NAS copy: playback, scrub,
+  the curve with a cursor, a start/end range, and **film export** (canvas +
+  MediaRecorder, MP4 where the browser can, time, height and curve burned in,
+  the curve zoomed to the range).
+  > A page opened from `file://` taints the canvas with its own images
+  > (SecurityError) and the film comes out empty. The first test missed it
+  > because headless Chrome ran with `--allow-file-access-from-files`. Now the
+  > export asks for the batch folder once (Chrome/Edge) and checks it is the
+  > right batch; served over http it just works.
+- **The page plays half-size copies** (`sma/`, 1152x648, ~130 kB, made by
+  `forhandsbilder.py` in each sync) and the film export reads the originals.
+  The originals are ~1 MB each; over Tailscale the page stalled on them
+  (2026-10-22), since ten frames a second wants 10 MB/s. The sync is capped at
+  `--bwlimit=1500` so a backlog never floods the WiFi.
+- **`index.html` at the share's root**, served by the NAS's own web server
+  (Synology Web Station, a name-based virtual host), so a phone reaches it
+  without SMB and the Pi carries none of the traffic.
+
+### Recording
+
+`recorder.py`: hardware H.264 on the lores stream beside the live MJPEG, PyAV
+writing MP4 -- no ffmpeg on the Pi. 30 fps, ~2 Mbit/s measured, 5 min cap,
+`live_recording_<time>.mp4` into the batch's `video/`. The meter pauses for it
+(taking the camera lock, so a measurement in progress finishes first), the lens
+holds focus, and the first point afterwards is marked.
+
+> **A camera hang, once.** 2026-09-29 13:22, 25 s after the first test
+> recording stopped: `Camera frontend has timed out`, no measurements, the page's
+> state call blocked. Not reproduced in six start/stop cycles the next day, and
+> the same error occurred on 09-10 and 09-12 before recording existed. Unknown.
+> *Measurement stalled* and the watchdog cover it.
+>
+> **Again 2026-10-01 12:05:26**, no recording, no viewer -- but in the middle
+> of an archive sync that was re-sending the whole 716 MB archive over WiFi
+> every ten minutes (rsync's mtimes did not stick on the NAS; fixed with
+> `--size-only`, a sync is now seconds). Not proven to be the trigger. The
+> recovery took 17 min, the measurement watchdog's period; the watchdog now
+> also watches the MJPEG encoder, which runs at 30 fps whether anyone watches
+> or not, and exits for a restart after `--frame-timeout` 15 s without a frame.
 
 ## Running the live view
 
@@ -246,440 +353,11 @@ and everything looks consistent until the geometry changes and the table no
 longer applies. Convert to full range, or work in RGB888, when photometry or
 centroids matter.
 
-## Laser: first calibration measurement (2026-09-04)
-
-Laser mounted, GPIO27, enable active high. Measured with `laser_probe.py` and
-`laser_repeatability.py`, against a flat matte target in the cardboard dummy.
-
-| | measured | expected |
-|---|---|---|
-| Dot radius from image centre | 194.3 px | — |
-| In object space at 12.71 px/mm | **15.29 mm** | 15.0 mm baseline (CAD) |
-| Deviation | **+1.9 %** | — |
-| Sensitivity dr/dd at 130 mm | 1.50 px/mm | — |
-| ...extrapolated to 150 mm rest level | 1.12 px/mm | brief says ~1 px/mm |
-| Short-term repeatability of r | 0.070 px std | — |
-| ...in height | **47 µm** | brief says 300–500 µm |
-
-The derived sensitivity matches the brief's optical analysis at rest level, and
-the dot lands within a couple of percent of where the CAD baseline predicts.
-
-> **What this check can and cannot establish.** It agrees to ~2 %, but it cannot
-> discriminate 15.0 mm from the 15.5 mm the brief quotes — against 15.5 the same
-> measurement reads −1.4 %. The scale of 12.71 px/mm comes from an FFT of a
-> folding rule, assuming exactly 1 mm graduations lying square in the focal
-> plane, and a couple of percent of error there passes straight through.
->
-> Nor can it be inverted to calibrate the scale from the known baseline, because
-> the laser's mounting angle is unknown — one of the three reasons the brief
-> gives for building a lookup table instead of computing the triangulation.
->
-> So: a consistency check at the few-percent level, and no more. Which is
-> exactly why the table is measured against known liquid levels.
-
-### The dot saturates hard
-
-Peak stayed pinned at the limited-range ceiling from 12 ms all the way down to
-800 µs, and only came free at **200 µs** — sixty times shorter than frame A's
-exposure. A clipped dot has a flat top, so the centroid is computed over a
-plateau instead of a profile and the sub-pixel precision is gone.
-
-**Frame A and frame B therefore need different exposures**, set per frame.
-`ExposureTime` is a runtime control, so this needs no reconfiguration.
-
-### What 47 µm does and does not mean
-
-It is short-term repeatability on a **static matte surface** over 25 frames in
-a few seconds. It measures noise, not accuracy, and says nothing about drift or
-systematic error.
-
-It says nothing at all about **foam**, which is the real target: krausen is a
-live, irregular, translucent bubble surface where the beam scatters subsurface
-rather than reflecting off a defined plane, and where bursting bubbles move the
-spot. The honest conclusion is not a resolution figure but that **the optics and
-electronics are no longer the limiting factor** — whatever precision the
-instrument ends up with will be set by the foam.
-
-> **Observation:** the y centroid is ~8× noisier than x (0.180 vs 0.023 px),
-> consistent across 25 frames. Most likely temporal row noise in the sensor,
-> which biases a y centroid but averages out in x. Of no practical consequence
-> here — the measured quantity is the radius, which inherits mostly from x since
-> the dot sits 186 px sideways against 56 px up.
-
-## Aperture: 1.5 mm printed stop (2026-09-05)
-
-A printed ABS-GF sleeve over the lens, hole printed rather than drilled.
-
-**It stops down exactly as intended.** Signal above the pedestal fell from
-148.76 to 47.89 at identical exposure, a ratio of **0.322** against 0.32
-predicted for a 1.5 mm hole. Working back, `N = 1.8/sqrt(0.322) = 3.17`, so
-`D = 4.74/3.17 = 1.50 mm`. No drilling needed.
-
-Depth of field measured from the sweep curve, illumination on, settle corrected:
-
-| criterion | dioptres | distance | depth |
-|---|---|---|---|
-| 90 % | 6.00–8.00 | 125–167 mm | 42 mm |
-| 80 % | 5.50–8.50 | 118–182 mm | **64 mm** |
-| 70 % | 5.00–9.00 | 111–200 mm | 89 mm |
-
-The normal krausen band of 10–30 mm fits with wide margin. Exposure for frame A
-becomes 37 ms, which needs the frame-duration cap lifted (below).
-
-> **The 23 mm figure from 2026-09-03 is not a valid comparison.** It was derived
-> from the sweep's width in dioptres rather than measured by moving the target,
-> and it was taken with a settle time now known to be too short. Re-measure
-> without the sleeve, with the corrected tool, before quoting any ratio.
-
-### Frame duration caps exposure
-
-The default video configuration pins `FrameDurationLimits` at `(33333, 33333)`,
-so exposure cannot exceed 33 ms — a frame cannot be shorter than its own
-exposure. The brief calls for 50–100 ms as the first thing to reach for when
-light is short, and stopping down makes that necessary. `frame_duration_for()`
-now derives the limits from the requested exposure. Verified: a request for
-37000 µs yields `ExposureTime 36982`, `FrameDuration 37997`.
-
-### Two faults found in the sweep tool
-
-**It never switched the illumination on.** The tool worked while the LEDs were
-driven externally and always lit. Once they moved to GPIO17 it silently swept a
-dark scene and returned a flat curve at the noise floor — no error, just a
-plausible-looking result that meant nothing. It now holds the lamp for the
-duration and warns if the region of interest is dark.
-
-**The settle time was too short.** Measured directly by commanding a 7.35
-dioptre jump and sampling every 0.24 s: nothing moves for ~0.7 s, the transition
-takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
-directions. Most of that is pipeline latency, not the actuator. The old
-`0.35 + 0.04/dioptre` sampled inside the transition.
-
-## PDAF calibration, nine points (2026-09-10)
-
-Measured from **the lid's underside**, which is the reference that matters: zero
-there means foam against the lid. The model's offset absorbs a constant, so only
-the spacing between heights has to be accurate.
-
-```
-dpt = 1.0669 + 770.3/(d + 17.21)          nine points, 43.9 to 181 mm
-                                          fit rms 0.0284 dpt, LOO 1.08 mm
-```
-
-**The model form depends on the range.** Over 109-181 mm a two-parameter
-`b/(d+c)` predicted better than three, so the additive term looked like
-overfitting. Adding points at 53.44 and then 43.91 mm settled it the other way —
-one hyperbola cannot carry the curvature from 44 to 181 mm. The near point was
-measured to test exactly that, and it failed the seven-point model's prediction
-by 3.77 mm before it improved anything.
-
-> **A check was lost in the trade.** The two-parameter fit put the lens plane
-> 40.58 mm above the lid, and the housing face sits at 41 — a number nobody
-> supplied, landing within a millimetre of where the optics are. With three
-> parameters it becomes 17.21 mm plus a 1.07 dpt additive term, which may be a
-> real VCM zero offset but corresponds to nothing measurable. More parameters
-> fit better and mean less.
-
-| from the lid | dpt | mm/dpt | within-run precision |
-|---|---|---|---|
-| 43.91 mm | 13.69 | 4.9 | 0.11 mm |
-| 71.57 mm | 9.71 | 10.2 | 0.15 mm |
-| 108.32 mm | 7.25 | 20.5 | 0.28 mm |
-| 144.55 mm | 5.84 | 34.0 | 0.24 mm |
-| 181 mm | 4.93 | 51.0 | 0.29 mm |
-
-Data in `calib/af-pdaf-20260910.csv`. Every point is eight AF cycles parked
-low/high/high/low, taken with the camera warm.
-
-### The folding rule read 0.5 mm high, and it was not the explanation
-
-The residual against the seven-point fit was a **bump**: zero at 44-90, then
--2.3, -2.8, -1.7 mm at 109-145, then zero again at 162-181. Nothing optical has
-that shape, and the suspect region was exactly the folding-rule measurements, so
-109, 127 and 145 were re-measured with the caliper (which reaches 155 mm).
-
-They came back **108.32, 126.37, 144.55** — the rule read 0.45-0.68 mm high,
-consistently, but nothing like the 1.7-2.8 mm the model demanded. The
-prediction failed.
-
-It still changed the character of the residual, from a localised bump to a
-smooth wave, and dropped the fit rms 30 %. Which sent me chasing the model form
-instead — also wrong, see below.
-
-> `89.9 -> 90.21` on re-measurement, same instrument both times. **The rig
-> re-creates itself to about 0.3 mm** as the caliper sees it. That is the floor
-> on what any re-measurement of a dismantled height can achieve.
-
-### ⚠️ The camera was cold, and that is the whole story
-
-Measured 2026-09-10, 21:00-22:01, a 60-minute session at a fixed 126.39 mm with
-the camera held open and the rig untouched. Twenty-one points, all 8/8.
-
-```
-        deviation from the final plateau
-    0s      -10.94 mm
-  360s       -3.07
-  900s       -0.77
- 1800s       -0.50
- 2160s       +0.00
- 3600s       -0.01
-```
-
-**From cold the reading is 10.9 mm out, and it takes 36 minutes to arrive.**
-Once there it is flat: the scatter of the nine point-means over the last 24
-minutes was 0.00247 dpt against 0.00257 predicted by counting noise alone. There
-is no drift left to measure — the settled camera is a noise-limited instrument
-at **0.066 mm** here.
-
-`af_calibrate.py` was run once per height, so every calibration point was taken
-on its own cold start, at whatever phase of that curve the preceding faff
-happened to land on.
-
-### The warm-up check never worked, and it failed twice over
-
-It asked the sensor temperature to rise less than 0.6 C between samples 30 s
-apart. Over this session the temperature went 53 to 58 C in eighteen minutes —
-**0.14 C per half-minute, always under the threshold.** So it fired after two
-minutes every single time, regardless of how cold the camera was, and printed
-`jamvikt vid 51 C` while the true equilibrium was 58.
-
-Two separate mistakes, and the second is the more instructive:
-
-- **The wrong quantity.** Temperature is a proxy; what matters is whether the
-  reading has stopped moving. Judge that directly.
-- **The wrong shape.** A difference between two neighbouring samples drowns in
-  the noise long before the underlying trend does. I repeated this error live
-  the same evening: I called the plateau at t=1080 s because the step from the
-  previous point was -0.0009 dpt, and the curve still had 0.79 mm to go. The
-  test has to be a **fitted trend over several readings**, not one step.
-
-`warm_up()` now runs AF cycles — the same duty cycle the measurement itself
-draws — and fits a slope over the last six readings, declaring equilibrium below
-0.03 dpt/h. The warm-up tail runs at +0.088 dpt/h, so the two separate cleanly.
-`--warmup-max` is 50 minutes; the old 25 would now time out.
-
-### Retracted: "it is the rig, not the camera"
-
-Written earlier the same evening, from three repeats: 109 mm re-run on an
-untouched rig agreed to 0.01 mm, while 126 mm rebuilt to the same caliper height
-differed by 1.46 mm. I concluded the scatter belonged to the fixture.
-
-**That does not survive.** All three runs were separate invocations, so each sat
-at a different point on a 10.9 mm warm-up curve, and the temperatures were
-printed as whole numbers — a "54 versus 55 C" could be anything from 0.1 to 1.9
-degrees. The two repeats differ in how warm the camera was at least as much as
-in whether the rig was rebuilt, and nothing in that data separates them.
-
-The rig may still contribute. It is simply not measured, and the 1.46 mm was not
-evidence for it.
-
-> What does survive from that round: the folding rule reads 0.45-0.68 mm high
-> against the caliper, the rig re-creates to 0.3 mm as the caliper sees it, and
-> extra model parameters do not absorb the residual. None of those depend on the
-> camera's thermal state.
-
-### Consequences for the table
-
-The nine points run 54 C at 181 mm to 57 C at 44 mm — **the thermal state
-correlates with distance**, because the series worked from far to near over one
-day. A confound that is monotonic in the fitted variable does not show up as a
-bad fit. It is absorbed into the parameters, and the calibration comes out wrong
-at every temperature except the one it was measured at.
-
-That is the likeliest source of the residual wave, and it means **the table
-should be re-taken on one thermal state**. `--request` does that: the session
-sleeps until a file appears, takes a point, deletes it, and never closes the
-camera. Write the distance in mm into the file, or `stop` to finish. One 36
-minute warm-up buys the whole table.
-
-| | |
-|---|---|
-| cold start error | **10.9 mm** at 126 mm |
-| time to equilibrium | **36 min** |
-| settled, 8-cycle mean | **0.066 mm** — counting noise, no drift |
-| settled, single AF cycle | 0.16 mm |
-
-### Re-taking the table: one thermal state, one live view
-
-`--request FILE` makes the session sleep until that file appears, take a point,
-and delete it -- so a whole table is measured without the camera ever closing.
-Write the distance in mm into the file, or `stop` to finish.
-
-`--preview PORT` serves the lores stream while it runs. The service has to be
-stopped for a calibration, so without this there is no way to see what the
-camera is looking at while a height is being built, which matters most at the
-far end where the target is small in frame.
-
-**The preview also buys configuration parity, which is the better reason.**
-`af_calibrate` configured a single main stream while `liveview` runs main plus
-lores. If the AF statistics depend on the stream configuration at all, the table
-would carry a configuration-dependent offset with nothing in the data to reveal
-it. Both now use the same two streams.
-
-> **The warm-up ran AF in the dark**, because `lamp.acquire()` sat after
-> `warm_up()` in `main()` -- harmless while the check only read a temperature,
-> wrong the moment it started driving AF. It read 2.99 dioptres against the
-> 6.7 the target sits at, and reported equilibrium. Caught by a smoke test.
->
-> This is the third time in this project that a tool has been handed a dark
-> scene and returned a plausible number: the focus sweep did it when the LEDs
-> moved to GPIO17, the exposure work did it once, and now this. The lamp is now
-> lit before the warm-up, and `warm_up()` refuses to run with it dark.
-
-**Build the heights near to far this time.** The old series ran far to near over
-one day, which is exactly how the thermal state came to correlate with distance.
-On one thermal state the order should not matter -- so running it in the
-opposite order and getting the same model is a free test that it does not.
-
-Above 155 mm the caliper does not reach. Rather than fall back on the folding
-rule, which reads 0.45-0.68 mm high, stand a measured block on the target and
-measure to its top: at 181 mm a 40 mm block puts the reading at 141 mm, well
-inside range, and two caliper readings beat one rule reading comfortably.
-Remove the block before taking the AF point.
-
-### Three confounds, each worth a millimetre or two
-
-The first attempt at re-taking the table on one thermal state (2026-09-10,
-23:00-00:15) got four heights in and found two more confounds. Held together
-they explain the old table's residual wave without needing any model deficiency.
-
-| | worth | fixed by |
-|---|---|---|
-| camera not thermally settled | 10.9 mm from cold | holding the camera open, 32 min once |
-| rebuild settling | 0.2-0.35 mm | a short wait; it is not the problem |
-| **camera drift, hours-long tail** | **~4 mm over 8 h** | not solved -- see the retraction below |
-| **ambient cooling** | ~1 mm per degree | randomise the height order |
-
-**Rebuild settling is real but small.** Two repeats looked like fast settling --
-1.79 mm over eight minutes at 90.15, 1.01 mm over 110 seconds at 108.16 -- and
-were recorded as such. The photometric check says otherwise: the illumination
-level moved only a fraction of what those distances demand.
-
-```
-              apparent (focus)   actual (photometric)
-  90.15 mm         +1.79 mm            +0.21 mm
- 108.16 mm         +1.01 mm            +0.35 mm
-```
-
-So a rebuilt stack moves **0.2-0.35 mm**, which agrees with the 0.3 mm the
-caliper sees, and the remaining 65-88 % is the camera drifting. The fixture is
-sound; a threaded column or preloaded spacers would solve nothing.
-
-**Ambient is the third one, and holding the camera open does not touch it.** The
-sensor read 63, 62, 62, 61, 61, 61, 60 C across the session as the garage cooled
-after midnight. At 0.07 dpt/C that is over a millimetre a degree, and it
-accumulates in measurement order -- which is distance order if the heights are
-built in sequence. Randomising the order turns it from a bias into scatter.
-
-> `SensorTemperature` is reported in whole degrees, so a "62 versus 61" hides
-> anything from 0.1 to 1.9 C, which is 0.1 to 2 mm. The quantisation is in the
-> sensor, not the logging, so it cannot be fixed -- only averaged down over many
-> readings.
-
-### The tape is a thermal barrier, and that is why temperature leads the reading
-
-Love's observation, and it explains something that had been nagging: the sensor
-temperature plateaus after about eighteen minutes while the reading keeps moving
-for another quarter of an hour.
-
-The module is held to its PCB by thick double-sided tape (the same tape that
-lets it creep off in vertical mounting). Heat from the ISP and the board has to
-cross that tape to reach the module. `SensorTemperature` is measured in the
-sensor die, inside the module; the lens and VCM sit in the same module but
-further from the heat path still. So the sensor temperature is a **leading
-indicator** of the lens's temperature, not a measure of it -- it arrives first
-and levels off first, while the part that actually sets focus is still warming.
-
-Which is the real reason the trend criterion has to be on the reading. The old
-temperature criterion was not merely implemented wrongly; it watched a quantity
-that by construction settles before the one that matters. A half-hour time
-constant also argues the tape is not thermally conductive.
-
-### The garage door, measured properly: 0.61 mm per degree of air
-
-2026-09-11. The overnight session was still running at a fixed 108.16 mm, rig
-untouched, when the door was opened to take the car out -- 72 seconds, from
-07:54:24 to 07:55:36, onto 6 C outside. The FTX extract-air sensor sits directly
-above the rig and logs at far higher resolution than anything used before.
-
-```
-garage air   22.2 -> 20.9 C at 07:57, back to 21.9 by 08:09
-
-before the door    6 pts   -0.19 mm
-trough 07:57-08:07 4 pts   -0.98 mm
-recovered 08:15+  10 pts   -0.44 mm
-
-dip        -0.79 mm +- 0.06    12.6 sigma
-recovery   +0.54 mm +- 0.02    27.2 sigma
-```
-
-**It dipped and came back.** That is the reversal test: settling can fall but
-cannot rise again, and no trend reverses on cue from a door. What remains
-against the starting point is -0.24 mm, of which -0.09 is the known creep of
-0.134 mm/h over the forty minutes.
-
-**0.61 mm per degree of garage air** at this distance.
-
-> **The lag is the tape, measured.** The air bottomed at 07:57 and the reading
-> at 07:58-08:03; the air was back by 08:09 and the reading by 08:16. The optics
-> trail the air by three to seven minutes and recover more slowly than it does
-> -- a thermal mass behind an insulating layer. Over the whole excursion
-> `SensorTemperature` moved **one count**, 58 -> 57 -> 58. It could never have
-> revealed this.
-
-**So `SensorTemperature` is the wrong covariate.** It is quantised to whole
-degrees by the sensor itself, and a degree is worth over a millimetre, so it
-cannot even see an event that moves the measurement 0.8 mm. The FTX extract
-temperature can: high resolution, sited above the rig, and measuring the
-quantity that actually drives the error.
-
-Consequences for taking a table: **the garage has to be thermally quiet**, with
-no door, and twenty minutes of grace after any disturbance, because the optics
-lag. A 15-second door opening at 08:33 left no visible trace, so the threshold
-is somewhere between that and a 72-second one.
-
-### ⚠️ Retracted: "the stack was still creeping". The rig never moved.
-
-87 points at a fixed 108.16 mm overnight showed the reading fall 3.85 mm over
-8.3 hours, and I attributed it to the rebuilt stack settling, with a fitted
-2.08 hour time constant. Love said a decimetre of particle board cannot settle
-three millimetres -- 3 % compression -- and asked which way the drift went.
-
-It is away from the camera, and there is a free test for that. **Illumination
-falls as the inverse square**, so a target receding 3.85 mm at 108 mm must go
-6.8 % darker. The exposure sat at 8000 us all night, so the level logged with
-every point is directly comparable across all 87:
-
-```
-if the target really moved to 112.01 mm
-  level should have fallen  -6.8 %   ->  87.5
-  level actually moved      +0.5 %   ->  93.3
-
-scatter in the level, all night   0.11 %  =  0.06 mm of distance
-```
-
-**The target held still to a tenth of a millimetre. The entire drift is in the
-camera.** With f = 4.74 mm and an image distance near 4.95 mm, 0.164 dioptres is
-about **4 micrometres** of change between lens and sensor -- invisible, and
-equally plausible as thermal expansion or as creep in the module's tape.
-
-> The number was already in the file. `niva` was added so the automatic exposure
-> could be audited afterwards; it is also an independent, photometric distance
-> measurement, calibrated by the inverse square. The data to refute the
-> conclusion was sitting in the column next to it.
-
-**This is far worse than a settling fixture.** A jig gets dismantled; this
-follows the instrument into service, and a fermentation runs for days.
-
-**And the equilibrium test cannot see it.** The overnight drift is
-**-0.0197 dpt/h**, below the 0.03 dpt/h threshold `warm_up()` uses to declare the
-camera settled. A criterion tuned against a thirty-minute warm-up is blind to a
-tail measured in hours. The test is not wrong for what it was built for -- it
-stops the 10.9 mm cold-start error -- but it must not be read as proof that the
-camera has stopped moving.
-
-What separates the two mechanisms is that **temperature is reversible and creep
-is not**. The garage warms through the day; if the reading comes back up, it is
-thermal. The session was left running to find out.
+# Measurement log, newest first
+
+Everything above is how the instrument is today. Everything below is how it
+got there: what was measured, in which order, and what was retracted. Later
+sections supersede earlier ones.
 
 ## The final housing (2026-10-10 to 10-19)
 
@@ -878,176 +556,6 @@ or focus on the lid's reflection at twice the distance with nothing to flag
 it. Test with flat, hazy beer in a tray on the stage, a floating scrap of
 speckle as the truth, then with foam. Then a real fermentation: the humidity
 question, bubble size, and whether the sight glass fogs from inside.
-
-## The instrument in service (2026-09-27 to 10-01)
-
-The service now measures krausen height with PDAF, publishes it to Home
-Assistant, archives frames and recordings to the NAS, and builds a timelapse
-page per batch. Site-specific names and addresses are in `LOCAL.md`.
-
-### Measuring in service: the calibration's conditions, kept
-
-`pdaf_meter.py` replaces the laser ranging (`focus_tracker.py`, void
-constants). Every 300 s it takes one point with `af_calibrate`'s own
-`pick_exposure` and `take_point`, not a reimplementation, and holds the
-conditions the table was measured under:
-
-| | why |
-|---|---|
-| **30 fps throughout** | exposures capped at 32 ms, and the live view's frame capped at 33.3 ms (`--max-frame-duration-us 33333`); a slower frame cools the sensor |
-| **lamp lit continuously** | measured below: it moves the reading 0.7 mm |
-| **lens parked at 0 dpt** between points | the VCM's holding current heats the module |
-| **lores 1280×720** in both | `af_calibrate` takes `LORES_SIZE` from `liveview`; the current model was taken at 1024×576 -- AF statistics come from the sensor before scaling, but it is a difference to know about |
-
-The exception is a viewer: while someone watches, the lens holds the last
-focus, and it parks when the last one leaves -- never during a recording.
-
-States: `uppvarmning` after a start, for 1.5x the time the service was down and at most 75 min (a `heartbeat` file beside `zero.json`, touched every 30 s, says when it last lived -- so a 30 s watchdog restart costs no points), `i_halsen` at the rail
-(surface nearer than ~25 mm), `utanfor_kalibrering` beyond 130 mm,
-`misslyckad`, `morkt` if the lamp was forced off. Each point goes to
-`matningar/matning-YYYYMMDD.csv` with the lid temperature.
-
-### The lamp moves the reading 0.7 mm, so it stays on
-
-`lamptest.sh`, 2026-09-28/29: four rounds of two hours, lamp held on against lit
-only to measure, target fixed at 123.40 mm.
-
-```
-d = a - 1.07 mm/C * lid - 0.447 +- 0.023 mm * (lamp always on)
-lid +0.26 C with the lamp always on
-```
-
-About 0.28 mm through the lid temperature and 0.45 mm more that the ferrule
-sensor does not see -- the lamp warms something nearer the camera. Far over the
-0.1 mm threshold set before the test. The calibration was taken with it on, and
-a lamp switched by viewers would be a varying heat source in the middle of a
-fermentation.
-
-### Temperature compensation: 0.053 dpt/C of the lid
-
-`--temp-coeff 0.053` with `--lid-sensor` on the TC ferrule. The raw dpt is
-corrected by the coefficient times the lid's change **since the zero was set**;
-the zero stores the uncorrected distance and its lid temperature, so a re-zero
-is exact. Without a zero nothing is corrected. The log keeps the raw `dpt`;
-`d_mm` and `krausen_mm` are corrected.
-
-Checked after the fact on the simulation below with the coefficient from the
-independent interval test: rms over 249 points **1.24 -> ~0.36 mm**, the tail
-after the run -1.78 -> ~-0.35 mm. Live, the first night after zeroing, target
-still: **-0.06 +- 0.10 mm** corrected against +0.22 +- 0.13 uncorrected.
-
-> Swap the sensor for the one in the new housing's aluminium plate, and
-> **re-measure the coefficient** -- it belongs to the build.
-
-### Fit the working range, not the whole table
-
-`afmodell.py` fits `dpt = a_s + b/(d + c)` with one offset per night and a
-shared shape, **over heights up to 130 mm only**. Including 158 mm misses it
-by 2.6 mm and takes the rms inside the range from 0.22 to 0.78 mm: the curve
-leaves the hyperbola beyond ~125 mm. Heights beyond are tabulated.
-
-It matters at the zero. A 75 L fill puts the surface 117-125 mm below the lid,
-and the zero is a constant in every height that follows. Leave-one-height-out
-gives 0.1-0.5 mm inside the range but **1.9 mm at 123.40**, the last height
-before a gap to 158. The stage check confirmed it: krausen within 1.2 mm of
-the truth everywhere, the error being the model reading +1 mm at the zero
-height. **The next table wants heights at ~110, 117, 130 and 140 mm**, so the
-fill level sits inside the data instead of on its edge.
-
-### A fermentation played on the stage
-
-`krausensim.py`, 2026-09-29: batch and zero from Home Assistant, then the stage
-walked a curve `h = H (t/tp)^k exp(k(1 - t/tp))` -- 80 mm at 4 h, 12 h long.
-
-```
-143 points against the truth    mean -0.20 mm   rms 0.50   extremes -1.27 / +1.03
-peak                            truth 80.0      measured 80.2
-rising +0.10 mm, falling -0.35 -- the night cooled
-```
-
-Afterwards, stage back at the fill level, the reading sat at -1.8 mm: the lid
-was 0.8 C cooler than at the zero. That is what the compensation above
-removes.
-
-### Home Assistant over MQTT
-
-`ha_mqtt.py`, device discovery (HA 2024.11+), names in English because HA runs
-in English -- the internal Swedish states are translated on the way out.
-
-- **One availability for the device**: LWT `offline` retained; the service says
-  `offline` itself on a clean stop (SIGTERM is turned into a shutdown); an
-  unclean death fires the will.
-- **Nothing stale shown as fresh**: state is **not retained** (HA cannot tell a
-  retained message's age), every sensor has `expire_after` 900 s, heights are
-  null unless the point is valid, and *Last measurement* is the heartbeat --
-  unchanged values do not update HA's "last changed", so watch that one.
-- **HA restarting** (`homeassistant/status online`): discovery and the last
-  point re-sent after 5 s.
-- **Measurement stalled**: a binary sensor set by the watchdog thread, not the
-  meter, after 11 min without a point. On 2026-09-29 the camera hung with the
-  process and its MQTT link alive, and HA saw nothing until expiry.
-- Buttons *Start new batch*, *Set zero at fill level*, switch *Recording*.
-  **Retained commands are refused** -- they would re-run on every reconnect.
-- Number *Measurement interval*, 2-60 min (from 2026-11-02): points **and
-  frame A** at that interval, so the timelapse thins out with them -- for
-  measuring sparser once the krausen has fallen. Kept in `intervall.json`
-  beside `zero.json`, so a restart keeps it; without the file the service
-  runs at `--measure-interval`. `expire_after`, *Measurement stalled* and the
-  watchdog all follow it. Not yet used: it waits until the frame A fix of the
-  same day has shown whether it stopped the hangs, since fewer frame A would
-  muddle that.
-
-### The archive: batches, NAS, timelapse
-
-- **A batch is a folder** `~/arkiv/<YYYY-MM-DD_HHMM>/` with `bilder/`,
-  `matningar.csv`, `nollningar.csv`, `video/`. **Batch and zero are separate**:
-  a batch may be zeroed several times (before and after pitching, or once a
-  skin of foam gives focus something to hold), every zero is logged and every
-  row carries the zero it was computed against. A new batch clears the zero.
-- **The service writes only locally.** `krausencamera-arkiv.timer` rsyncs to the
-  NAS every 10 min (automount, `nofail`, `soft`), and prunes local files older
-  than 14 days only when the NAS holds a copy of the same size. Nothing is ever
-  deleted on the NAS. **Never `rsync --delete` into `~/krausencamera`** -- see
-  Workflow.
-- **`timelapse.html` per batch**, built against the NAS copy: playback, scrub,
-  the curve with a cursor, a start/end range, and **film export** (canvas +
-  MediaRecorder, MP4 where the browser can, time, height and curve burned in,
-  the curve zoomed to the range).
-  > A page opened from `file://` taints the canvas with its own images
-  > (SecurityError) and the film comes out empty. The first test missed it
-  > because headless Chrome ran with `--allow-file-access-from-files`. Now the
-  > export asks for the batch folder once (Chrome/Edge) and checks it is the
-  > right batch; served over http it just works.
-- **The page plays half-size copies** (`sma/`, 1152x648, ~130 kB, made by
-  `forhandsbilder.py` in each sync) and the film export reads the originals.
-  The originals are ~1 MB each; over Tailscale the page stalled on them
-  (2026-10-22), since ten frames a second wants 10 MB/s. The sync is capped at
-  `--bwlimit=1500` so a backlog never floods the WiFi.
-- **`index.html` at the share's root**, served by the NAS's own web server
-  (Synology Web Station, a name-based virtual host), so a phone reaches it
-  without SMB and the Pi carries none of the traffic.
-
-### Recording
-
-`recorder.py`: hardware H.264 on the lores stream beside the live MJPEG, PyAV
-writing MP4 -- no ffmpeg on the Pi. 30 fps, ~2 Mbit/s measured, 5 min cap,
-`live_recording_<time>.mp4` into the batch's `video/`. The meter pauses for it
-(taking the camera lock, so a measurement in progress finishes first), the lens
-holds focus, and the first point afterwards is marked.
-
-> **A camera hang, once.** 2026-09-29 13:22, 25 s after the first test
-> recording stopped: `Camera frontend has timed out`, no measurements, the page's
-> state call blocked. Not reproduced in six start/stop cycles the next day, and
-> the same error occurred on 09-10 and 09-12 before recording existed. Unknown.
-> *Measurement stalled* and the watchdog cover it.
->
-> **Again 2026-10-01 12:05:26**, no recording, no viewer -- but in the middle
-> of an archive sync that was re-sending the whole 716 MB archive over WiFi
-> every ten minutes (rsync's mtimes did not stick on the NAS; fixed with
-> `--size-only`, a sync is now seconds). Not proven to be the trigger. The
-> recovery took 17 min, the measurement watchdog's period; the watchdog now
-> also watches the MJPEG encoder, which runs at 30 fps whether anyone watches
-> or not, and exits for a restart after `--frame-timeout` 15 s without a frame.
 
 ## The new module: settled, and what is left is the lid's temperature (2026-09-15 to 09-27)
 
@@ -1841,6 +1349,333 @@ same shape of failure as the laser returning a tank bottom seen through clear
 water at 0.06 px repeatability. Both tools now reject a railed reading rather
 than recording it.
 
+## PDAF calibration, nine points (2026-09-10)
+
+Measured from **the lid's underside**, which is the reference that matters: zero
+there means foam against the lid. The model's offset absorbs a constant, so only
+the spacing between heights has to be accurate.
+
+```
+dpt = 1.0669 + 770.3/(d + 17.21)          nine points, 43.9 to 181 mm
+                                          fit rms 0.0284 dpt, LOO 1.08 mm
+```
+
+**The model form depends on the range.** Over 109-181 mm a two-parameter
+`b/(d+c)` predicted better than three, so the additive term looked like
+overfitting. Adding points at 53.44 and then 43.91 mm settled it the other way —
+one hyperbola cannot carry the curvature from 44 to 181 mm. The near point was
+measured to test exactly that, and it failed the seven-point model's prediction
+by 3.77 mm before it improved anything.
+
+> **A check was lost in the trade.** The two-parameter fit put the lens plane
+> 40.58 mm above the lid, and the housing face sits at 41 — a number nobody
+> supplied, landing within a millimetre of where the optics are. With three
+> parameters it becomes 17.21 mm plus a 1.07 dpt additive term, which may be a
+> real VCM zero offset but corresponds to nothing measurable. More parameters
+> fit better and mean less.
+
+| from the lid | dpt | mm/dpt | within-run precision |
+|---|---|---|---|
+| 43.91 mm | 13.69 | 4.9 | 0.11 mm |
+| 71.57 mm | 9.71 | 10.2 | 0.15 mm |
+| 108.32 mm | 7.25 | 20.5 | 0.28 mm |
+| 144.55 mm | 5.84 | 34.0 | 0.24 mm |
+| 181 mm | 4.93 | 51.0 | 0.29 mm |
+
+Data in `calib/af-pdaf-20260910.csv`. Every point is eight AF cycles parked
+low/high/high/low, taken with the camera warm.
+
+### The folding rule read 0.5 mm high, and it was not the explanation
+
+The residual against the seven-point fit was a **bump**: zero at 44-90, then
+-2.3, -2.8, -1.7 mm at 109-145, then zero again at 162-181. Nothing optical has
+that shape, and the suspect region was exactly the folding-rule measurements, so
+109, 127 and 145 were re-measured with the caliper (which reaches 155 mm).
+
+They came back **108.32, 126.37, 144.55** — the rule read 0.45-0.68 mm high,
+consistently, but nothing like the 1.7-2.8 mm the model demanded. The
+prediction failed.
+
+It still changed the character of the residual, from a localised bump to a
+smooth wave, and dropped the fit rms 30 %. Which sent me chasing the model form
+instead — also wrong, see below.
+
+> `89.9 -> 90.21` on re-measurement, same instrument both times. **The rig
+> re-creates itself to about 0.3 mm** as the caliper sees it. That is the floor
+> on what any re-measurement of a dismantled height can achieve.
+
+### ⚠️ The camera was cold, and that is the whole story
+
+Measured 2026-09-10, 21:00-22:01, a 60-minute session at a fixed 126.39 mm with
+the camera held open and the rig untouched. Twenty-one points, all 8/8.
+
+```
+        deviation from the final plateau
+    0s      -10.94 mm
+  360s       -3.07
+  900s       -0.77
+ 1800s       -0.50
+ 2160s       +0.00
+ 3600s       -0.01
+```
+
+**From cold the reading is 10.9 mm out, and it takes 36 minutes to arrive.**
+Once there it is flat: the scatter of the nine point-means over the last 24
+minutes was 0.00247 dpt against 0.00257 predicted by counting noise alone. There
+is no drift left to measure — the settled camera is a noise-limited instrument
+at **0.066 mm** here.
+
+`af_calibrate.py` was run once per height, so every calibration point was taken
+on its own cold start, at whatever phase of that curve the preceding faff
+happened to land on.
+
+### The warm-up check never worked, and it failed twice over
+
+It asked the sensor temperature to rise less than 0.6 C between samples 30 s
+apart. Over this session the temperature went 53 to 58 C in eighteen minutes —
+**0.14 C per half-minute, always under the threshold.** So it fired after two
+minutes every single time, regardless of how cold the camera was, and printed
+`jamvikt vid 51 C` while the true equilibrium was 58.
+
+Two separate mistakes, and the second is the more instructive:
+
+- **The wrong quantity.** Temperature is a proxy; what matters is whether the
+  reading has stopped moving. Judge that directly.
+- **The wrong shape.** A difference between two neighbouring samples drowns in
+  the noise long before the underlying trend does. I repeated this error live
+  the same evening: I called the plateau at t=1080 s because the step from the
+  previous point was -0.0009 dpt, and the curve still had 0.79 mm to go. The
+  test has to be a **fitted trend over several readings**, not one step.
+
+`warm_up()` now runs AF cycles — the same duty cycle the measurement itself
+draws — and fits a slope over the last six readings, declaring equilibrium below
+0.03 dpt/h. The warm-up tail runs at +0.088 dpt/h, so the two separate cleanly.
+`--warmup-max` is 50 minutes; the old 25 would now time out.
+
+### Retracted: "it is the rig, not the camera"
+
+Written earlier the same evening, from three repeats: 109 mm re-run on an
+untouched rig agreed to 0.01 mm, while 126 mm rebuilt to the same caliper height
+differed by 1.46 mm. I concluded the scatter belonged to the fixture.
+
+**That does not survive.** All three runs were separate invocations, so each sat
+at a different point on a 10.9 mm warm-up curve, and the temperatures were
+printed as whole numbers — a "54 versus 55 C" could be anything from 0.1 to 1.9
+degrees. The two repeats differ in how warm the camera was at least as much as
+in whether the rig was rebuilt, and nothing in that data separates them.
+
+The rig may still contribute. It is simply not measured, and the 1.46 mm was not
+evidence for it.
+
+> What does survive from that round: the folding rule reads 0.45-0.68 mm high
+> against the caliper, the rig re-creates to 0.3 mm as the caliper sees it, and
+> extra model parameters do not absorb the residual. None of those depend on the
+> camera's thermal state.
+
+### Consequences for the table
+
+The nine points run 54 C at 181 mm to 57 C at 44 mm — **the thermal state
+correlates with distance**, because the series worked from far to near over one
+day. A confound that is monotonic in the fitted variable does not show up as a
+bad fit. It is absorbed into the parameters, and the calibration comes out wrong
+at every temperature except the one it was measured at.
+
+That is the likeliest source of the residual wave, and it means **the table
+should be re-taken on one thermal state**. `--request` does that: the session
+sleeps until a file appears, takes a point, deletes it, and never closes the
+camera. Write the distance in mm into the file, or `stop` to finish. One 36
+minute warm-up buys the whole table.
+
+| | |
+|---|---|
+| cold start error | **10.9 mm** at 126 mm |
+| time to equilibrium | **36 min** |
+| settled, 8-cycle mean | **0.066 mm** — counting noise, no drift |
+| settled, single AF cycle | 0.16 mm |
+
+### Re-taking the table: one thermal state, one live view
+
+`--request FILE` makes the session sleep until that file appears, take a point,
+and delete it -- so a whole table is measured without the camera ever closing.
+Write the distance in mm into the file, or `stop` to finish.
+
+`--preview PORT` serves the lores stream while it runs. The service has to be
+stopped for a calibration, so without this there is no way to see what the
+camera is looking at while a height is being built, which matters most at the
+far end where the target is small in frame.
+
+**The preview also buys configuration parity, which is the better reason.**
+`af_calibrate` configured a single main stream while `liveview` runs main plus
+lores. If the AF statistics depend on the stream configuration at all, the table
+would carry a configuration-dependent offset with nothing in the data to reveal
+it. Both now use the same two streams.
+
+> **The warm-up ran AF in the dark**, because `lamp.acquire()` sat after
+> `warm_up()` in `main()` -- harmless while the check only read a temperature,
+> wrong the moment it started driving AF. It read 2.99 dioptres against the
+> 6.7 the target sits at, and reported equilibrium. Caught by a smoke test.
+>
+> This is the third time in this project that a tool has been handed a dark
+> scene and returned a plausible number: the focus sweep did it when the LEDs
+> moved to GPIO17, the exposure work did it once, and now this. The lamp is now
+> lit before the warm-up, and `warm_up()` refuses to run with it dark.
+
+**Build the heights near to far this time.** The old series ran far to near over
+one day, which is exactly how the thermal state came to correlate with distance.
+On one thermal state the order should not matter -- so running it in the
+opposite order and getting the same model is a free test that it does not.
+
+Above 155 mm the caliper does not reach. Rather than fall back on the folding
+rule, which reads 0.45-0.68 mm high, stand a measured block on the target and
+measure to its top: at 181 mm a 40 mm block puts the reading at 141 mm, well
+inside range, and two caliper readings beat one rule reading comfortably.
+Remove the block before taking the AF point.
+
+### Three confounds, each worth a millimetre or two
+
+The first attempt at re-taking the table on one thermal state (2026-09-10,
+23:00-00:15) got four heights in and found two more confounds. Held together
+they explain the old table's residual wave without needing any model deficiency.
+
+| | worth | fixed by |
+|---|---|---|
+| camera not thermally settled | 10.9 mm from cold | holding the camera open, 32 min once |
+| rebuild settling | 0.2-0.35 mm | a short wait; it is not the problem |
+| **camera drift, hours-long tail** | **~4 mm over 8 h** | not solved -- see the retraction below |
+| **ambient cooling** | ~1 mm per degree | randomise the height order |
+
+**Rebuild settling is real but small.** Two repeats looked like fast settling --
+1.79 mm over eight minutes at 90.15, 1.01 mm over 110 seconds at 108.16 -- and
+were recorded as such. The photometric check says otherwise: the illumination
+level moved only a fraction of what those distances demand.
+
+```
+              apparent (focus)   actual (photometric)
+  90.15 mm         +1.79 mm            +0.21 mm
+ 108.16 mm         +1.01 mm            +0.35 mm
+```
+
+So a rebuilt stack moves **0.2-0.35 mm**, which agrees with the 0.3 mm the
+caliper sees, and the remaining 65-88 % is the camera drifting. The fixture is
+sound; a threaded column or preloaded spacers would solve nothing.
+
+**Ambient is the third one, and holding the camera open does not touch it.** The
+sensor read 63, 62, 62, 61, 61, 61, 60 C across the session as the garage cooled
+after midnight. At 0.07 dpt/C that is over a millimetre a degree, and it
+accumulates in measurement order -- which is distance order if the heights are
+built in sequence. Randomising the order turns it from a bias into scatter.
+
+> `SensorTemperature` is reported in whole degrees, so a "62 versus 61" hides
+> anything from 0.1 to 1.9 C, which is 0.1 to 2 mm. The quantisation is in the
+> sensor, not the logging, so it cannot be fixed -- only averaged down over many
+> readings.
+
+### The tape is a thermal barrier, and that is why temperature leads the reading
+
+Love's observation, and it explains something that had been nagging: the sensor
+temperature plateaus after about eighteen minutes while the reading keeps moving
+for another quarter of an hour.
+
+The module is held to its PCB by thick double-sided tape (the same tape that
+lets it creep off in vertical mounting). Heat from the ISP and the board has to
+cross that tape to reach the module. `SensorTemperature` is measured in the
+sensor die, inside the module; the lens and VCM sit in the same module but
+further from the heat path still. So the sensor temperature is a **leading
+indicator** of the lens's temperature, not a measure of it -- it arrives first
+and levels off first, while the part that actually sets focus is still warming.
+
+Which is the real reason the trend criterion has to be on the reading. The old
+temperature criterion was not merely implemented wrongly; it watched a quantity
+that by construction settles before the one that matters. A half-hour time
+constant also argues the tape is not thermally conductive.
+
+### The garage door, measured properly: 0.61 mm per degree of air
+
+2026-09-11. The overnight session was still running at a fixed 108.16 mm, rig
+untouched, when the door was opened to take the car out -- 72 seconds, from
+07:54:24 to 07:55:36, onto 6 C outside. The FTX extract-air sensor sits directly
+above the rig and logs at far higher resolution than anything used before.
+
+```
+garage air   22.2 -> 20.9 C at 07:57, back to 21.9 by 08:09
+
+before the door    6 pts   -0.19 mm
+trough 07:57-08:07 4 pts   -0.98 mm
+recovered 08:15+  10 pts   -0.44 mm
+
+dip        -0.79 mm +- 0.06    12.6 sigma
+recovery   +0.54 mm +- 0.02    27.2 sigma
+```
+
+**It dipped and came back.** That is the reversal test: settling can fall but
+cannot rise again, and no trend reverses on cue from a door. What remains
+against the starting point is -0.24 mm, of which -0.09 is the known creep of
+0.134 mm/h over the forty minutes.
+
+**0.61 mm per degree of garage air** at this distance.
+
+> **The lag is the tape, measured.** The air bottomed at 07:57 and the reading
+> at 07:58-08:03; the air was back by 08:09 and the reading by 08:16. The optics
+> trail the air by three to seven minutes and recover more slowly than it does
+> -- a thermal mass behind an insulating layer. Over the whole excursion
+> `SensorTemperature` moved **one count**, 58 -> 57 -> 58. It could never have
+> revealed this.
+
+**So `SensorTemperature` is the wrong covariate.** It is quantised to whole
+degrees by the sensor itself, and a degree is worth over a millimetre, so it
+cannot even see an event that moves the measurement 0.8 mm. The FTX extract
+temperature can: high resolution, sited above the rig, and measuring the
+quantity that actually drives the error.
+
+Consequences for taking a table: **the garage has to be thermally quiet**, with
+no door, and twenty minutes of grace after any disturbance, because the optics
+lag. A 15-second door opening at 08:33 left no visible trace, so the threshold
+is somewhere between that and a 72-second one.
+
+### ⚠️ Retracted: "the stack was still creeping". The rig never moved.
+
+87 points at a fixed 108.16 mm overnight showed the reading fall 3.85 mm over
+8.3 hours, and I attributed it to the rebuilt stack settling, with a fitted
+2.08 hour time constant. Love said a decimetre of particle board cannot settle
+three millimetres -- 3 % compression -- and asked which way the drift went.
+
+It is away from the camera, and there is a free test for that. **Illumination
+falls as the inverse square**, so a target receding 3.85 mm at 108 mm must go
+6.8 % darker. The exposure sat at 8000 us all night, so the level logged with
+every point is directly comparable across all 87:
+
+```
+if the target really moved to 112.01 mm
+  level should have fallen  -6.8 %   ->  87.5
+  level actually moved      +0.5 %   ->  93.3
+
+scatter in the level, all night   0.11 %  =  0.06 mm of distance
+```
+
+**The target held still to a tenth of a millimetre. The entire drift is in the
+camera.** With f = 4.74 mm and an image distance near 4.95 mm, 0.164 dioptres is
+about **4 micrometres** of change between lens and sensor -- invisible, and
+equally plausible as thermal expansion or as creep in the module's tape.
+
+> The number was already in the file. `niva` was added so the automatic exposure
+> could be audited afterwards; it is also an independent, photometric distance
+> measurement, calibrated by the inverse square. The data to refute the
+> conclusion was sitting in the column next to it.
+
+**This is far worse than a settling fixture.** A jig gets dismantled; this
+follows the instrument into service, and a fermentation runs for days.
+
+**And the equilibrium test cannot see it.** The overnight drift is
+**-0.0197 dpt/h**, below the 0.03 dpt/h threshold `warm_up()` uses to declare the
+camera settled. A criterion tuned against a thirty-minute warm-up is blind to a
+tail measured in hours. The test is not wrong for what it was built for -- it
+stops the 10.9 mm cold-start error -- but it must not be read as proof that the
+camera has stopped moving.
+
+What separates the two mechanisms is that **temperature is reversible and creep
+is not**. The garage warms through the day; if the reading comes back up, it is
+thermal. The session was left running to find out.
+
 ## ⚠️ RESOLVED: the camera module was coming off its own PCB (2026-09-10)
 
 The Camera Module 3's sensor-and-lens package is held to its PCB by **thick
@@ -2319,76 +2154,7 @@ dx = 231.4 and measured 227.69, which is 2.3 mm of distance. Three parameters
 against three points is an exact fit that validates nothing, which is why the
 fourth point exists.
 
-## Focus sweep
-
-`src/focus_sweep.py` sweeps `LensPosition` and reports the sharpest setting from
-two independent metrics (Laplacian variance and mean gradient magnitude). It
-locks exposure, gain and white balance first — with auto-exposure running, a
-sharpness metric partly measures brightness drift between steps instead of focus.
-
-```bash
-ssh krausencamera 'cd ~/krausencamera && python3 focus_sweep.py --save /tmp/sharp.jpg'
-```
-
-The sweep doubles as a **distance measurement**: LensPosition is in dioptres, so
-the peak gives the object distance as 1000/position mm — useful for checking a
-mechanical setup without measuring it mechanically. The reference plane inside
-the lens is not known exactly, so treat the figure as repeatable rather than
-absolute.
-
-**First result, 2026-09-03, visible room light, provisional distance:**
-
-| | Run 1 | Run 2 |
-|---|---|---|
-| peak, Laplacian | 7.80 dpt | 7.70 dpt |
-| peak, gradient | 7.80 dpt | 7.40 dpt |
-| implied distance | 128 mm | 130 mm |
-
-The optimum is a **plateau, not a point**: 7.4–7.8 dpt all sit within 3 % of peak
-sharpness. Useful precision is therefore about ±0.2 dpt, and quoting two decimals
-would be false confidence. Peak sharpness is ~14× the defocused floor, so the
-target had ample contrast.
-
-Scale measured from a steel rule in frame: **~15.5 px/mm** at 2304×1296, so
-roughly 150 mm of horizontal field. Half-millimetre graduations are resolved.
-
-⚠️ Provisional on two counts: the working distance is not yet the final one, and
-the brief requires the sweep to be repeated under **850 nm IR**, whose focal
-plane differs from that of visible light.
-
-> **Settle time must scale with travel.** A fixed settle is fine for steps within
-> a sweep but not for the jump between sweeps. Measured: the coarse sweep ended
-> at 15.0 dpt and the fine sweep began at 6.50, and that first point read
-> lap=13.5 where its neighbours implied ~45 — the lens was still moving when the
-> frame was taken. Now `base + 40 ms per dioptre`; the same point then read 60.6
-> and fitted its neighbours.
-
-## Workflow
-
-Develop locally in this folder → deploy with `rsync` over SSH → run as a systemd
-service on the Pi. No sshfs/Samba mount: slow and fragile over WiFi.
-
-```bash
-rsync -avz --exclude '.git' --exclude '__pycache__' ./src/ krausencamera:~/krausencamera/
-```
-
-> **Never `--delete` here.** The Pi's `~/krausencamera` also holds what only
-> exists there: `mqtt.json` (credentials), `zero.json` (the fill-level zero),
-> `af-model.csv` (the model the service reads), `matningar/` (every
-> measurement) and the calibration sessions. `--delete` would remove all of it,
-> because none of it is in `src/`.
-
-## Architecture (settled 2026-09-02)
-
-Departs from the brief on one point: **no MJPEG camera in HASS.**
-
-| Channel | Content | Consumer |
-|---|---|---|
-| **MQTT** (discovery) | krausen height in mm, values to log | HASS |
-| **Web view on the Pi** | live image, opened from phone or browser | a human, on demand |
-| **NAS (SMB)** | one frame per minute, archive | later analysis |
-
-HASS is not in the image path at all — only the data path.
+## The laser era: drift, targets, liquids and the live view (2026-09-03 to 09-08)
 
 ### Scope: height is the only measurement (settled 2026-09-07)
 
@@ -3395,3 +3161,245 @@ The earlier concern that the live view would be the system's problematic
 sustained load does not survive measurement. Watching a whole dry hop at full
 rate is fine. The enclosure still has to be thought through, but the margin is
 comfortable rather than tight.
+
+## Aperture: 1.5 mm printed stop (2026-09-05)
+
+A printed ABS-GF sleeve over the lens, hole printed rather than drilled.
+
+**It stops down exactly as intended.** Signal above the pedestal fell from
+148.76 to 47.89 at identical exposure, a ratio of **0.322** against 0.32
+predicted for a 1.5 mm hole. Working back, `N = 1.8/sqrt(0.322) = 3.17`, so
+`D = 4.74/3.17 = 1.50 mm`. No drilling needed.
+
+Depth of field measured from the sweep curve, illumination on, settle corrected:
+
+| criterion | dioptres | distance | depth |
+|---|---|---|---|
+| 90 % | 6.00–8.00 | 125–167 mm | 42 mm |
+| 80 % | 5.50–8.50 | 118–182 mm | **64 mm** |
+| 70 % | 5.00–9.00 | 111–200 mm | 89 mm |
+
+The normal krausen band of 10–30 mm fits with wide margin. Exposure for frame A
+becomes 37 ms, which needs the frame-duration cap lifted (below).
+
+> **The 23 mm figure from 2026-09-03 is not a valid comparison.** It was derived
+> from the sweep's width in dioptres rather than measured by moving the target,
+> and it was taken with a settle time now known to be too short. Re-measure
+> without the sleeve, with the corrected tool, before quoting any ratio.
+
+### Frame duration caps exposure
+
+The default video configuration pins `FrameDurationLimits` at `(33333, 33333)`,
+so exposure cannot exceed 33 ms — a frame cannot be shorter than its own
+exposure. The brief calls for 50–100 ms as the first thing to reach for when
+light is short, and stopping down makes that necessary. `frame_duration_for()`
+now derives the limits from the requested exposure. Verified: a request for
+37000 µs yields `ExposureTime 36982`, `FrameDuration 37997`.
+
+### Two faults found in the sweep tool
+
+**It never switched the illumination on.** The tool worked while the LEDs were
+driven externally and always lit. Once they moved to GPIO17 it silently swept a
+dark scene and returned a flat curve at the noise floor — no error, just a
+plausible-looking result that meant nothing. It now holds the lamp for the
+duration and warns if the region of interest is dark.
+
+**The settle time was too short.** Measured directly by commanding a 7.35
+dioptre jump and sampling every 0.24 s: nothing moves for ~0.7 s, the transition
+takes ~0.3 s, and the reading is stable from ~1.2 s, the same from both
+directions. Most of that is pipeline latency, not the actuator. The old
+`0.35 + 0.04/dioptre` sampled inside the transition.
+
+## Laser: first calibration measurement (2026-09-04)
+
+Laser mounted, GPIO27, enable active high. Measured with `laser_probe.py` and
+`laser_repeatability.py`, against a flat matte target in the cardboard dummy.
+
+| | measured | expected |
+|---|---|---|
+| Dot radius from image centre | 194.3 px | — |
+| In object space at 12.71 px/mm | **15.29 mm** | 15.0 mm baseline (CAD) |
+| Deviation | **+1.9 %** | — |
+| Sensitivity dr/dd at 130 mm | 1.50 px/mm | — |
+| ...extrapolated to 150 mm rest level | 1.12 px/mm | brief says ~1 px/mm |
+| Short-term repeatability of r | 0.070 px std | — |
+| ...in height | **47 µm** | brief says 300–500 µm |
+
+The derived sensitivity matches the brief's optical analysis at rest level, and
+the dot lands within a couple of percent of where the CAD baseline predicts.
+
+> **What this check can and cannot establish.** It agrees to ~2 %, but it cannot
+> discriminate 15.0 mm from the 15.5 mm the brief quotes — against 15.5 the same
+> measurement reads −1.4 %. The scale of 12.71 px/mm comes from an FFT of a
+> folding rule, assuming exactly 1 mm graduations lying square in the focal
+> plane, and a couple of percent of error there passes straight through.
+>
+> Nor can it be inverted to calibrate the scale from the known baseline, because
+> the laser's mounting angle is unknown — one of the three reasons the brief
+> gives for building a lookup table instead of computing the triangulation.
+>
+> So: a consistency check at the few-percent level, and no more. Which is
+> exactly why the table is measured against known liquid levels.
+
+### The dot saturates hard
+
+Peak stayed pinned at the limited-range ceiling from 12 ms all the way down to
+800 µs, and only came free at **200 µs** — sixty times shorter than frame A's
+exposure. A clipped dot has a flat top, so the centroid is computed over a
+plateau instead of a profile and the sub-pixel precision is gone.
+
+**Frame A and frame B therefore need different exposures**, set per frame.
+`ExposureTime` is a runtime control, so this needs no reconfiguration.
+
+### What 47 µm does and does not mean
+
+It is short-term repeatability on a **static matte surface** over 25 frames in
+a few seconds. It measures noise, not accuracy, and says nothing about drift or
+systematic error.
+
+It says nothing at all about **foam**, which is the real target: krausen is a
+live, irregular, translucent bubble surface where the beam scatters subsurface
+rather than reflecting off a defined plane, and where bursting bubbles move the
+spot. The honest conclusion is not a resolution figure but that **the optics and
+electronics are no longer the limiting factor** — whatever precision the
+instrument ends up with will be set by the foam.
+
+> **Observation:** the y centroid is ~8× noisier than x (0.180 vs 0.023 px),
+> consistent across 25 frames. Most likely temporal row noise in the sensor,
+> which biases a y centroid but averages out in x. Of no practical consequence
+> here — the measured quantity is the radius, which inherits mostly from x since
+> the dot sits 186 px sideways against 56 px up.
+
+## Focus sweep
+
+`src/focus_sweep.py` sweeps `LensPosition` and reports the sharpest setting from
+two independent metrics (Laplacian variance and mean gradient magnitude). It
+locks exposure, gain and white balance first — with auto-exposure running, a
+sharpness metric partly measures brightness drift between steps instead of focus.
+
+```bash
+ssh krausencamera 'cd ~/krausencamera && python3 focus_sweep.py --save /tmp/sharp.jpg'
+```
+
+The sweep doubles as a **distance measurement**: LensPosition is in dioptres, so
+the peak gives the object distance as 1000/position mm — useful for checking a
+mechanical setup without measuring it mechanically. The reference plane inside
+the lens is not known exactly, so treat the figure as repeatable rather than
+absolute.
+
+**First result, 2026-09-03, visible room light, provisional distance:**
+
+| | Run 1 | Run 2 |
+|---|---|---|
+| peak, Laplacian | 7.80 dpt | 7.70 dpt |
+| peak, gradient | 7.80 dpt | 7.40 dpt |
+| implied distance | 128 mm | 130 mm |
+
+The optimum is a **plateau, not a point**: 7.4–7.8 dpt all sit within 3 % of peak
+sharpness. Useful precision is therefore about ±0.2 dpt, and quoting two decimals
+would be false confidence. Peak sharpness is ~14× the defocused floor, so the
+target had ample contrast.
+
+Scale measured from a steel rule in frame: **~15.5 px/mm** at 2304×1296, so
+roughly 150 mm of horizontal field. Half-millimetre graduations are resolved.
+
+⚠️ Provisional on two counts: the working distance is not yet the final one, and
+the brief requires the sweep to be repeated under **850 nm IR**, whose focal
+plane differs from that of visible light.
+
+> **Settle time must scale with travel.** A fixed settle is fine for steps within
+> a sweep but not for the jump between sweeps. Measured: the coarse sweep ended
+> at 15.0 dpt and the fine sweep began at 6.50, and that first point read
+> lap=13.5 where its neighbours implied ~45 — the lens was still moving when the
+> frame was taken. Now `base + 40 ms per dioptre`; the same point then read 60.6
+> and fitted its neighbours.
+
+## ✅ Power supply: solved
+
+**Solution: MeanWell 5.1 V / 15 W directly on the GPIO pins.** No micro-USB.
+
+Final verification 2026-09-02 22:53, booted with `throttled=0x0`:
+
+```
+Idle 40s                     under-voltage:  0/20
+1 core, 20s                  under-voltage:  0/10   arm=1400MHz  49.4'C
+2 cores, 20s                 under-voltage:  0/10   arm=1399MHz  55.8'C
+3 cores, 20s                 under-voltage:  0/10   arm=1200MHz  60.1'C
+4 cores, 30s                 under-voltage:  0/15   arm=1200MHz  65.5'C
+Camera alone 2304x1296 60s   under-voltage:  0/30   arm=600MHz   48.3'C
+Camera + 2 cores, 60s        under-voltage:  0/30   arm=1200MHz  60.1'C
+4 cores + camera, 60s        under-voltage:  0/30   arm=1200MHz  68.8'C
+```
+
+Final state `0x80000` — bit 19 only (*soft temp limit has occurred*).
+**No under-voltage bit set at all**, and 0 voltage lines in `dmesg`.
+
+### What the fault actually was
+
+| Setup | Idle | Under load |
+|---|---|---|
+| Original cable + PSU | **95.6 %** under-voltage, 600 MHz | — |
+| New cable + same PSU | 0 % | under-voltage, one 53 s episode |
+| Bench supply via bad micro-USB stub, 1 A limit | ~10 % | — |
+| Bench supply on GPIO pins, **1 A limit** | 0 % | **died at 4 cores** |
+| Bench supply on GPIO pins, 5.1 A limit | 0 % | under-voltage at 4 cores |
+| **MeanWell 5.1 V/15 W on pins** | **0 %** | **clean throughout** |
+
+Three independent faults, all in the supply path — never in the power supply's
+rating:
+
+1. **The original cable, ~1.5 Ω.** Computed from a 0.45 V drop at 0.3 A. The
+   dominant fault.
+2. **The bench supply's 1 A limit** (the default on the spare slot). A Pi 3B+
+   draws ~300 mA on average but has WiFi transients of 1.5–2 A. At 1 A the
+   supply entered constant-current mode.
+3. **The bench leads, ~0.39 Ω.** Only visible once the limit was raised to 5.1 A.
+
+**Diagnostic tip:** resistive drop *warns first* (`Undervoltage detected`, clock
+reduction, recovery). A current limit collapses straight through brownout
+**without a word in the log**. Silent death under load ⇒ suspect the current
+limit, not the cable.
+
+### Thermal: heatsink fitted 2026-09-02 23:19
+
+Standard RPi heatsink. Same ramp, same MeanWell supply, directly comparable:
+
+| Stage | Without heatsink | With heatsink |
+|---|---|---|
+| 1 core | 49.4 °C · 1400 MHz · 0/10 | 46.2 °C · 1400 MHz · 0/10 |
+| 2 cores | 55.8 °C · 1399 MHz · 0/10 | 52.6 °C · 1400 MHz · 0/10 |
+| 3 cores | 60.1 °C · 1200 MHz · **4/10** | 58.5 °C · **1399 MHz** · **0/10** |
+| 4 cores | 65.5 °C · 1200 MHz · 14/15 | 62.8 °C · 1199 MHz · 12/15 |
+| Camera alone | 48.3 °C · 0/30 | 49.4 °C · 0/30 |
+| **Camera + 2 cores** | 60.1 °C · 1200 MHz · **7/30** | 59.1 °C · **1399 MHz** · **1/30** |
+| 4 cores + camera | 68.8 °C · 1200 MHz · 30/30 | 67.1 °C · 1199 MHz · 29/30 |
+
+**Result:** the realistic workload (camera + 2 cores) now runs at full clock
+essentially all the time — 1/30 versus 7/30, and a minimum clock of 1399 rather
+than 1200 MHz. Three cores became entirely throttle-free.
+
+**But the gain is only 2–3 °C, and constant across every load step.** That means
+the dominant thermal resistance is not chip→heatsink but **heatsink→air**. At
+4 cores it is still limited 12/15 — the heatsink saturates without air movement.
+
+⚠️ Consequence for the enclosure: 3 °C of margin is eaten by a sealed body.
+**A bigger heatsink inside the box does not fix this** — it meets the same
+saturated heatsink→air resistance. What actually helps is a **conduction path
+out of the enclosure**: a thermal pad from the SoC/heatsink to the body wall,
+preferably towards the sight glass or a metal part with contact to the outside.
+
+**The cheapest fix, though, is software:** the live view is only needed on
+demand. Serving it that way rather than running a continuous stream removes the
+system's only sustained load — and then the operating case is camera alone,
+49.4 °C, nowhere near the limit.
+
+### Throttled bit reference
+
+| Value | Bits | Meaning |
+|---|---|---|
+| `0x0` | — | healthy |
+| `0x50005` | 0, 2, 16, 18 | under-voltage *now* + throttled *now* + has occurred |
+| `0xd0008` | 3, 16, 18, 19 | soft temp limit *now*, voltage event has occurred |
+| `0x80000` | 19 | temp limit only has occurred — voltage has been clean |
+
+Sticky bits are cleared only by a reboot. Odd low hex digit ⟺ bit 0 set.
