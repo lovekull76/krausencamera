@@ -1,6 +1,6 @@
 [Unit]
 Description=Krausencamera: live view, frame A archive and ranging
-Documentation=https://github.com/lovekull/krausencamera
+Documentation=https://github.com/lovekull76/krausencamera
 After=network-online.target
 Wants=network-online.target
 
